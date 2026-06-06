@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTheme } from "next-themes";
-import { Settings, Check, Sun, Moon } from "lucide-react";
+import { Settings, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -11,15 +11,11 @@ import { UsageLimits } from "@/components/app/usage-limits";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useThemeVariant } from "@/theme/theme-provider";
-import { THEME_LIST } from "@/theme/registry";
 import { useSession } from "../session-context";
 import { useUpdateAgency } from "@/hooks/use-agency";
 import { ApiError } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
-  const { variant, setVariant } = useThemeVariant();
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
 
@@ -99,43 +95,11 @@ export default function SettingsPage() {
       <GlassCard className="p-6">
         <h2 className="font-display text-lg font-semibold">Theme</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Six glassmorphism themes, each with light and dark. Bordeaux is the
-          default. Switching a theme changes only design tokens — never the app.
+          A single editorial evergreen theme with light and dark modes. Switching
+          mode changes only design tokens — never the app.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {THEME_LIST.map((t) => (
-            <button
-              key={t.name}
-              type="button"
-              onClick={() => setVariant(t.name)}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all hover:-translate-y-0.5",
-                variant === t.name
-                  ? "border-primary ring-2 ring-primary/15"
-                  : "border-border",
-              )}
-            >
-              <span
-                className="size-11 shrink-0 rounded-lg"
-                style={{ background: t.swatch }}
-              />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-semibold">
-                  {t.label}
-                  {variant === t.name && (
-                    <Check className="size-3.5 text-primary" />
-                  )}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {t.vibe}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-5 flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <span className="text-sm font-medium">Mode</span>
           <div className="flex gap-2">
             <Button

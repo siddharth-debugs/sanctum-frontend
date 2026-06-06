@@ -64,21 +64,27 @@ export function AppSidebar({
     (c) => c.id === clientSwitcher.activeId,
   );
 
+  // Highlight only the MOST-SPECIFIC matching nav item. A naive
+  // pathname.startsWith() lights up parent routes too (e.g. Overview "/finance"
+  // would stay active on "/finance/invoices"). Match at a segment boundary and
+  // pick the longest matching url so each route owns exactly one highlight.
+  const activeUrl = nav
+    .flatMap((section) => section.items.map((i) => i.url))
+    .filter((url) => pathname === url || pathname.startsWith(url + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <Sidebar variant="inset" collapsible="icon" className="border-0">
       <SidebarHeader>
-        <div className="flex items-center gap-2.5 px-1 py-1.5">
-          <div
-            className="grid size-9 shrink-0 place-items-center rounded-[11px] font-display text-lg font-semibold text-primary-foreground"
-            style={{
-              background:
-                "linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--accent) 70%,var(--primary)))",
-              boxShadow:
-                "0 6px 18px color-mix(in srgb,var(--primary) 40%,transparent)",
-            }}
-          >
-            S
-          </div>
+        <div className="flex items-center gap-2.5 px-1 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/sanctum-logo.png"
+            alt="Sanctum"
+            width={36}
+            height={36}
+            className="size-9 shrink-0 object-contain group-data-[collapsible=icon]:size-8"
+          />
           <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
             <span className="truncate font-display text-[15px] font-semibold leading-tight tracking-tight">
               Sanctum
@@ -96,9 +102,7 @@ export function AppSidebar({
             <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
             <SidebarMenu>
               {section.items.map((item) => {
-                const isActive =
-                  pathname === item.url ||
-                  (item.url !== "/dashboard" && pathname.startsWith(item.url));
+                const isActive = item.url === activeUrl;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
@@ -107,7 +111,7 @@ export function AppSidebar({
                       tooltip={item.title}
                       className={cn(
                         isActive &&
-                          "text-primary-foreground [background:linear-gradient(100deg,var(--primary),color-mix(in_srgb,var(--accent)_55%,var(--primary)))] hover:text-primary-foreground data-[active=true]:text-primary-foreground",
+                          "[background-image:linear-gradient(180deg,var(--primary),color-mix(in_srgb,var(--primary)_85%,#000))] text-primary-foreground hover:text-primary-foreground data-[active=true]:text-primary-foreground",
                       )}
                     >
                       <Link href={item.url}>
@@ -119,7 +123,7 @@ export function AppSidebar({
                       <SidebarMenuBadge
                         className={cn(
                           isActive
-                            ? "text-primary-foreground"
+                            ? "text-primary-foreground!"
                             : "text-accent",
                         )}
                       >

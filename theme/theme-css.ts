@@ -59,6 +59,45 @@ function shapeVars(d: ThemeDefinition): string {
 }
 
 /**
+ * Floating pickers/menus (select, combobox, dropdown menus, popovers) always
+ * render as a DARK surface — even in light mode — for a premium, high-contrast
+ * list with light text. Rather than touch any component, we re-point the
+ * surface tokens on the portaled content to the theme's DARK palette; the whole
+ * subtree (bg, text, borders, muted labels, highlight) recolors automatically
+ * and stays theme-aware. In dark mode these resolve to the same values, so it's
+ * a no-op there.
+ */
+const MENU_SURFACE_SLOTS = [
+  '[data-slot="select-content"]',
+  '[data-slot="dropdown-menu-content"]',
+  '[data-slot="dropdown-menu-sub-content"]',
+  '[data-slot="popover-content"]',
+  '[data-slot="command"]',
+];
+
+function menuSurfaceVars(t: TokenSet): string {
+  return [
+    `--popover:${t.popover}`,
+    `--popover-foreground:${t.popoverForeground}`,
+    `--foreground:${t.foreground}`,
+    `--card:${t.card}`,
+    `--card-foreground:${t.cardForeground}`,
+    `--muted:${t.muted}`,
+    `--muted-foreground:${t.mutedForeground}`,
+    `--secondary:${t.secondary}`,
+    `--secondary-foreground:${t.secondaryForeground}`,
+    `--accent:${t.accent}`,
+    `--accent-foreground:${t.accentForeground}`,
+    `--primary:${t.primary}`,
+    `--primary-foreground:${t.primaryForeground}`,
+    `--border:${t.border}`,
+    `--input:${t.input}`,
+    `--ring:${t.ring}`,
+    `color-scheme:dark`,
+  ].join(";");
+}
+
+/**
  * Builds one stylesheet covering ALL variants x modes:
  *   [data-theme="x"]            -> light tokens + shape
  *   [data-theme="x"].dark       -> dark tokens
@@ -70,7 +109,12 @@ export function buildThemeCss(): string {
     .map((d) => {
       const light = `[data-theme="${d.name}"]{${shapeVars(d)};${toVars(d.light)}}`;
       const dark = `[data-theme="${d.name}"].dark{${toVars(d.dark)}}`;
-      return light + dark;
+      // Dark picker/menu surface (applies in every mode; no-op in dark).
+      const menuSel = MENU_SURFACE_SLOTS.map(
+        (s) => `[data-theme="${d.name}"] ${s}`,
+      ).join(",");
+      const menu = `${menuSel}{${menuSurfaceVars(d.dark)}}`;
+      return light + dark + menu;
     })
     .join("\n");
 }

@@ -1,10 +1,4 @@
-export type ThemeName =
-  | "bordeaux"
-  | "nocturne"
-  | "glacier"
-  | "solstice"
-  | "verdant"
-  | "platinum";
+export type ThemeName = "evergreen";
 
 export type Mode = "light" | "dark";
 

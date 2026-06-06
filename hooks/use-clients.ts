@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import type { Client } from "@/lib/api/types";
+import type { Client, ClientSource, RelationshipHealth } from "@/lib/api/types";
 
 /** GET /clients — list clients in the agency (owner/admin: all; member: assigned). */
 export function useClients(filters?: { status?: string; search?: string }) {
@@ -33,6 +33,24 @@ export interface ClientInput {
   brandColor?: string;
   logoUrl?: string;
   handles?: Record<string, string>;
+  // CRM: company profile
+  industry?: string;
+  website?: string;
+  phoneCc?: string;
+  phone?: string;
+  clientSource?: ClientSource;
+  // CRM: billing
+  gstNumber?: string;
+  paymentTermsDays?: number;
+  billingAddress?: string;
+  billingState?: string;
+  billingCity?: string;
+  billingPincode?: string;
+  // CRM: relationship
+  relationshipHealth?: RelationshipHealth;
+  nextFollowUpAt?: string;
+  internalNotes?: string;
+  status?: Client["status"];
 }
 
 export function useCreateClient() {

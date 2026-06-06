@@ -21,7 +21,7 @@ export default function RootLayout({
       <head>
         <ThemeStyles />
       </head>
-      <body className={`${fontVariables} antialiased`}>
+      <body suppressHydrationWarning className={`${fontVariables} antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

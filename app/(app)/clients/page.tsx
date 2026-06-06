@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/app/status-badge";
+import { HealthBadge } from "@/components/app/health-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -125,6 +126,18 @@ export default function ClientsPage() {
         },
       },
       {
+        id: "industry",
+        accessorFn: (c) => c.industry ?? "",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Industry" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.industry || "—"}
+          </span>
+        ),
+      },
+      {
         id: "handles",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Channels" />
@@ -155,9 +168,12 @@ export default function ClientsPage() {
           <DataTableColumnHeader column={column} title="Status" />
         ),
         cell: ({ row }) => (
-          <StatusBadge
-            status={row.original.status === "active" ? "posted" : "draft"}
-          />
+          <div className="flex items-center gap-2">
+            <StatusBadge
+              status={row.original.status === "active" ? "posted" : "draft"}
+            />
+            <HealthBadge health={row.original.relationshipHealth} />
+          </div>
         ),
         filterFn: (row, id, value: string[]) =>
           value.includes(row.getValue(id)),
@@ -184,8 +200,13 @@ export default function ClientsPage() {
                   align="end"
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <DropdownMenuItem asChild>
+                    <Link href={`/clients/${c.id}`}>
+                      <Eye className="mr-2 size-4" /> Open details
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => viewModal.onOpen(c)}>
-                    <Eye className="mr-2 size-4" /> View
+                    <Eye className="mr-2 size-4" /> Quick view
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={`/clients/${c.id}/calendar`}>

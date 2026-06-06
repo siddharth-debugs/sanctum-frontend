@@ -20,7 +20,7 @@ export function KpiCard({ label, value, icon: Icon, delta, hint }: KpiCardProps)
         </span>
         {label}
       </div>
-      <div className="mt-3.5 font-display text-3xl font-semibold leading-none tracking-tight">
+      <div className="mt-3.5 font-display text-2xl font-semibold leading-none tracking-tight tabular-nums">
         {value}
       </div>
       <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">

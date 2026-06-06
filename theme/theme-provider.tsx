@@ -24,7 +24,8 @@ export function useThemeVariant() {
 /**
  * Inline script (runs before paint) that reads the persisted variant from
  * localStorage and sets data-theme on <html>, avoiding a flash of the default
- * theme. next-themes handles the light/dark class the same way.
+ * theme ("evergreen"). next-themes handles the light/dark class the same way.
+ * There is only one variant now, so this effectively always sets "evergreen".
  */
 function VariantScript({ forced }: { forced?: ThemeName }) {
   const js = forced

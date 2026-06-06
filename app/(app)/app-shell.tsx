@@ -12,11 +12,14 @@ import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { AuroraBackground } from "@/components/app/aurora-background";
 import { ThemeSwitcher } from "@/components/app/theme-switcher";
+import { AiChatLauncher } from "@/components/app/ai-chat-launcher";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APP_NAV } from "@/lib/nav";
 import { useMe, isUnauthenticated } from "@/hooks/use-me";
 import { useClients } from "@/hooks/use-clients";
 import { useLogout } from "@/hooks/use-auth";
+import { useUnreadCount } from "@/hooks/use-messages";
+import { SocketProvider } from "@/lib/socket";
 import { SessionProvider } from "./session-context";
 
 /** Full-screen splash while we resolve the session. */
@@ -73,31 +76,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider value={me.data}>
-      <Shell>{children}</Shell>
+      <SocketProvider authenticated>
+        <Shell>{children}</Shell>
+      </SocketProvider>
     </SessionProvider>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const me = useMe();
   const logout = useLogout();
   const { data: clients } = useClients();
+  const { data: unread } = useUnreadCount();
   const activeClients = (clients ?? []).filter((c) => c.status === "active");
-  const [activeId, setActiveId] = React.useState<string | undefined>();
 
-  React.useEffect(() => {
-    if (!activeId && activeClients[0]) setActiveId(activeClients[0].id);
-  }, [activeId, activeClients]);
+  // Inject live counts into the static nav: a Messages unread badge and the
+  // active-client count (reusing the existing SidebarMenuBadge mechanism).
+  const nav = React.useMemo(
+    () =>
+      APP_NAV.map((section) => ({
+        ...section,
+        items: section.items.map((item) => {
+          if (item.url === "/messages") {
+            return { ...item, badge: unread && unread > 0 ? unread : undefined };
+          }
+          if (item.url === "/clients") {
+            return { ...item, badge: activeClients.length || undefined };
+          }
+          return item;
+        }),
+      })),
+    [unread, activeClients.length],
+  );
 
   const session = me.data!;
   const userName = session.user.fullName ?? session.user.email;
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh overflow-hidden">
       <AuroraBackground />
       <AppSidebar
-        nav={APP_NAV}
+        nav={nav}
         agency={{
           name: session.agency?.name ?? "Your agency",
           plan: session.plan?.name,
@@ -108,17 +127,12 @@ function Shell({ children }: { children: React.ReactNode }) {
           role: session.user.role,
         }}
         onLogout={() => logout.mutate()}
-        clientSwitcher={{
-          clients: activeClients.map((c) => ({ id: c.id, name: c.name })),
-          activeId,
-          onSelect: (id) => {
-            setActiveId(id);
-            router.push(`/clients/${id}/calendar`);
-          },
-        }}
       />
       <SidebarInset className="relative overflow-hidden">
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-[var(--glass-bg)] px-4 backdrop-blur-[var(--glass-blur)]">
+        <header
+          data-print-hide
+          className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-[var(--glass-bg)] px-4 backdrop-blur-[var(--glass-blur)]"
+        >
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 h-5" />
           <span className="font-display text-sm font-semibold">Sanctum</span>
@@ -126,8 +140,10 @@ function Shell({ children }: { children: React.ReactNode }) {
             <ThemeSwitcher />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </SidebarInset>
+      {/* Global floating AI chat — available on every authed page. */}
+      <AiChatLauncher />
     </SidebarProvider>
   );
 }
