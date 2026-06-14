@@ -14,7 +14,7 @@ import {
   SelectField,
   ComboboxField,
   NumberField,
-  DateField,
+  DatePickerField,
 } from "@/components/fields";
 import {
   projectSchema,
@@ -242,13 +242,13 @@ export function ProjectFormSheet({
           <section>
             <SectionHeading>Timeline</SectionHeading>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <DateField
+              <DatePickerField
                 control={form.control}
                 name="startDate"
                 label="Start date"
                 placeholder="Pick a date"
               />
-              <DateField
+              <DatePickerField
                 control={form.control}
                 name="deadline"
                 label="Deadline"

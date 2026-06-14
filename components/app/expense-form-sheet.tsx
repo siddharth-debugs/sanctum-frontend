@@ -14,7 +14,7 @@ import {
   SelectField,
   ComboboxField,
   NumberField,
-  DateField,
+  DatePickerField,
   SwitchField,
 } from "@/components/fields";
 import {
@@ -189,7 +189,7 @@ export function ExpenseFormSheet({
                 placeholder="What was this for?"
                 rows={2}
               />
-              <DateField
+              <DatePickerField
                 control={form.control}
                 name="expenseDate"
                 label="Date"

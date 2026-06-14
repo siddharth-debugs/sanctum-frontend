@@ -39,6 +39,9 @@ export interface ComboboxFieldProps<T extends FieldValues>
   options: ComboOption[];
   multiple?: boolean;
   emptyText?: string;
+  searchPlaceholder?: string;
+  /** Show an inline clear (×) on a single-select with a value. Default true. */
+  clearable?: boolean;
   onSearch?: (q: string) => void;
 }
 
@@ -53,6 +56,8 @@ export function ComboboxField<T extends FieldValues>({
   options,
   multiple,
   emptyText = "No results.",
+  searchPlaceholder = "Search…",
+  clearable = true,
   onSearch,
   className,
 }: ComboboxFieldProps<T>) {
@@ -101,9 +106,10 @@ export function ComboboxField<T extends FieldValues>({
                     type="button"
                     variant="outline"
                     role="combobox"
+                    aria-expanded={open}
                     disabled={disabled}
                     className={cn(
-                      "w-full justify-between font-normal",
+                      "h-11 w-full justify-between font-normal",
                       selected.length === 0 && "text-muted-foreground",
                     )}
                   >
@@ -119,7 +125,8 @@ export function ComboboxField<T extends FieldValues>({
                                 {labelFor(v)}
                                 <X
                                   className="size-3 opacity-60"
-                                  onClick={(e) => {
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     toggle(v);
                                   }}
@@ -128,14 +135,30 @@ export function ComboboxField<T extends FieldValues>({
                             ))
                           : labelFor(selected[0])}
                     </span>
-                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                    {!multiple && selected.length > 0 && clearable && !disabled ? (
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label="Clear selection"
+                        className="ml-2 grid size-5 shrink-0 place-items-center rounded-sm opacity-60 transition-opacity hover:opacity-100"
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          field.onChange("");
+                        }}
+                      >
+                        <X className="size-3.5" />
+                      </span>
+                    ) : (
+                      <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                    )}
                   </Button>
                 </FormControl>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                 <Command>
                   <CommandInput
-                    placeholder="Search…"
+                    placeholder={searchPlaceholder}
                     onValueChange={onSearch}
                   />
                   <CommandList>

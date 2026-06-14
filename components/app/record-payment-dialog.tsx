@@ -18,7 +18,7 @@ import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import {
   NumberField,
-  DateField,
+  DatePickerField,
   SelectField,
   TextField,
   TextareaField,
@@ -134,7 +134,7 @@ export function RecordPaymentDialog({
                 prefix="₹"
                 required
               />
-              <DateField
+              <DatePickerField
                 control={form.control}
                 name="paidAt"
                 label="Paid date"

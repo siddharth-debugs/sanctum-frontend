@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { AuroraBackground } from "@/components/app/aurora-background";
 import { ThemeSwitcher } from "@/components/app/theme-switcher";
+import { ActiveTimerBar } from "@/components/app/active-timer-bar";
 import { AiChatLauncher } from "@/components/app/ai-chat-launcher";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APP_NAV } from "@/lib/nav";
@@ -137,6 +138,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <Separator orientation="vertical" className="mr-1 h-5" />
           <span className="font-display text-sm font-semibold">Sanctum</span>
           <div className="ml-auto flex items-center gap-2">
+            <ActiveTimerBar />
             <ThemeSwitcher />
           </div>
         </header>

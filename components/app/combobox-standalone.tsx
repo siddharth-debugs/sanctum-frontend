@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ export function ComboboxStandalone({
   options,
   placeholder = "Select…",
   emptyText = "No results.",
+  searchPlaceholder = "Search…",
   className,
   disabled,
 }: {
@@ -43,6 +44,7 @@ export function ComboboxStandalone({
   options: ComboboxStandaloneOption[];
   placeholder?: string;
   emptyText?: string;
+  searchPlaceholder?: string;
   className?: string;
   disabled?: boolean;
 }) {
@@ -56,20 +58,37 @@ export function ComboboxStandalone({
           type="button"
           variant="outline"
           role="combobox"
+          aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "justify-between font-normal",
+            "h-11 justify-between font-normal",
             !selected && "text-muted-foreground",
             className,
           )}
         >
           <span className="truncate">{selected ? selected.label : placeholder}</span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+          {selected && !disabled ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label="Clear selection"
+              className="ml-2 grid size-5 shrink-0 place-items-center rounded-sm opacity-60 transition-opacity hover:opacity-100"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onChange("");
+              }}
+            >
+              <X className="size-3.5" />
+            </span>
+          ) : (
+            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search…" />
+          <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>

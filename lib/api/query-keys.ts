@@ -23,6 +23,18 @@ export const queryKeys = {
     ["projects", projectId, "milestones"] as const,
   projectMembers: (projectId: string) =>
     ["projects", projectId, "members"] as const,
+  projectOverview: (projectId: string) =>
+    ["projects", projectId, "overview"] as const,
+  projectActivity: (projectId: string) =>
+    ["projects", projectId, "activity"] as const,
+  projectTimers: (projectId: string) =>
+    ["projects", projectId, "timers"] as const,
+  projectTimeSummary: (projectId: string) =>
+    ["projects", projectId, "time-summary"] as const,
+  projectTimeLogs: (projectId: string) =>
+    ["projects", projectId, "time-logs"] as const,
+  // Timers (current user)
+  activeTimer: ["timers", "active"] as const,
   portal: (token: string, month?: string) =>
     ["portal", token, month ?? "current"] as const,
   // Finance

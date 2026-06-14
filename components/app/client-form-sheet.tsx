@@ -14,7 +14,7 @@ import {
   SwitchField,
   SelectField,
   NumberField,
-  DateField,
+  DatePickerField,
 } from "@/components/fields";
 import {
   clientSchema,
@@ -319,7 +319,7 @@ export function ClientFormSheet({
                   placeholder="Select health"
                   options={RELATIONSHIP_HEALTH_OPTIONS}
                 />
-                <DateField
+                <DatePickerField
                   control={form.control}
                   name="nextFollowUpAt"
                   label="Next follow-up"

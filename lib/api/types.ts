@@ -567,6 +567,95 @@ export interface ProjectMember {
   createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Time tracking — live timers + logged work. A user runs at most ONE timer at a
+// time; starting another auto-stops the previous. `elapsedMinutes` and
+// `startedAt` let the client tick a live clock without polling every second.
+// ---------------------------------------------------------------------------
+
+/** GET /timers/active and POST /timers/start → the user's running timer. */
+export interface RunningTimer {
+  id: string;
+  projectId: string;
+  projectName: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  userId: string;
+  userName: string;
+  /** ISO timestamp the timer began — drives the live elapsed clock. */
+  startedAt: string;
+  note: string | null;
+  /** Whole minutes elapsed at the time the payload was built. */
+  elapsedMinutes: number;
+}
+
+/** POST /timers/stop → confirmation + the persisted time log. */
+export interface StopTimerResult {
+  stopped: true;
+  minutes: number;
+  timeLog: TimeLog;
+}
+
+/** GET /projects/:id/timers row — who is actively working on the project now. */
+export interface ProjectActiveTimer {
+  userId: string;
+  userName: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  startedAt: string;
+  elapsedMinutes: number;
+}
+
+/** GET /projects/:id/time-summary payload. */
+export interface ProjectTimeSummary {
+  totalMinutes: number;
+  byMember: Array<{ userId: string; userName: string; minutes: number }>;
+  byTask: Array<{ taskId: string; taskTitle: string; minutes: number }>;
+  activeTimers: ProjectActiveTimer[];
+  logCount: number;
+}
+
+/** GET /projects/:id/time-logs row. */
+export interface ProjectTimeLog {
+  id: string;
+  minutes: number;
+  workDate: string;
+  note: string | null;
+  userId: string;
+  userName: string;
+  taskId: string | null;
+  taskTitle: string | null;
+}
+
+/**
+ * GET /projects/:id/activity row — an audit-log entry. `action` is a dotted verb
+ * ("task.create", "task.status_change", "timer.stop", "member.add", …) and
+ * `metadata` carries human-relevant fields used to render a readable summary.
+ */
+export interface ProjectActivity {
+  id: string;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** GET /projects/:id/overview — the boss-dashboard rollup. */
+export interface ProjectOverview {
+  tasksByStatus: Record<ProjectTaskStatus, number>;
+  taskTotal: number;
+  taskDone: number;
+  milestoneTotal: number;
+  milestoneDone: number;
+  memberCount: number;
+  totalTimeMinutes: number;
+  activeTimerCount: number;
+  recentActivity: ProjectActivity[];
+}
+
 export interface MediaAsset {
   id: string;
   cloudinaryPublicId?: string;

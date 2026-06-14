@@ -20,7 +20,7 @@ import {
   NumberField,
   TextareaField,
   ComboboxField,
-  DateField,
+  DatePickerField,
 } from "@/components/fields";
 import { useLogTime } from "@/hooks/use-team";
 import { useProjects } from "@/hooks/use-projects";
@@ -147,7 +147,7 @@ export function LogTimeDialog({
               options={projectOptions}
               emptyText="No projects."
             />
-            <DateField
+            <DatePickerField
               control={form.control}
               name="workDate"
               label="Date"

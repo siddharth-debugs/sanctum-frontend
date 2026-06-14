@@ -14,7 +14,7 @@ import {
   TextareaField,
   ComboboxField,
   SelectField,
-  DateField,
+  DatePickerField,
   SwitchField,
 } from "@/components/fields";
 import {
@@ -274,12 +274,12 @@ export function InvoiceForm({
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <DateField
+                  <DatePickerField
                     control={form.control}
                     name="issueDate"
                     label="Issue date"
                   />
-                  <DateField
+                  <DatePickerField
                     control={form.control}
                     name="dueDate"
                     label="Due date"

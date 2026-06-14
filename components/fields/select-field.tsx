@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BaseFieldProps, RequiredMark } from "./field-context";
+import { ComboboxField } from "./combobox-field";
 
 export interface SelectOption {
   label: string;
@@ -25,6 +26,15 @@ export interface SelectOption {
 export interface SelectFieldProps<T extends FieldValues>
   extends BaseFieldProps<T> {
   options: SelectOption[];
+  /**
+   * Force the searchable combobox on/off. When omitted, the field auto-upgrades
+   * to a type-to-filter combobox once there are more than `searchThreshold`
+   * options (ui-ux-pro-max: long pickers should be searchable). Set `false` to
+   * keep a plain Select for short enums even past the threshold.
+   */
+  searchable?: boolean;
+  /** Option count above which the field becomes searchable. Default 6. */
+  searchThreshold?: number;
 }
 
 export function SelectField<T extends FieldValues>({
@@ -36,8 +46,31 @@ export function SelectField<T extends FieldValues>({
   disabled,
   required,
   options,
+  searchable,
+  searchThreshold = 6,
   className,
 }: SelectFieldProps<T>) {
+  const useCombobox =
+    searchable ?? options.length > searchThreshold;
+
+  // Long / option-rich pickers render the searchable combobox so users can
+  // type-to-filter instead of scrolling a long menu.
+  if (useCombobox) {
+    return (
+      <ComboboxField
+        control={control}
+        name={name}
+        label={label}
+        description={description}
+        placeholder={placeholder}
+        disabled={disabled}
+        required={required}
+        options={options}
+        className={className}
+      />
+    );
+  }
+
   return (
     <FormField
       control={control}
@@ -56,7 +89,7 @@ export function SelectField<T extends FieldValues>({
             disabled={disabled}
           >
             <FormControl>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-11 w-full">
                 <SelectValue placeholder={placeholder} />
               </SelectTrigger>
             </FormControl>

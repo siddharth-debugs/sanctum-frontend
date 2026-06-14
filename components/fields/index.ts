@@ -12,6 +12,10 @@ export {
   type ComboOption,
 } from "./combobox-field";
 export { DateField, type DateFieldProps } from "./date-field";
+export {
+  DatePickerField,
+  type DatePickerFieldProps,
+} from "./date-picker-field";
 export { SwitchField, type SwitchFieldProps } from "./switch-field";
 export {
   RadioGroupField,
