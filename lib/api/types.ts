@@ -65,6 +65,24 @@ export type ProjectTaskStatus =
 
 export type ProjectMilestoneStatus = "pending" | "completed";
 
+/** Task priority — semantic order: none < low < medium < high < urgent. */
+export type ProjectTaskPriority =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "urgent";
+
+/** Allowed label palette tokens (mirrors backend LABEL_COLORS). */
+export type ProjectLabelColor =
+  | "pine"
+  | "brass"
+  | "sky"
+  | "rose"
+  | "amber"
+  | "violet"
+  | "slate";
+
 // ---------------------------------------------------------------------------
 // Finance — ALL money fields are INTEGER PAISE (₹1 = 100 paise). Format with
 // lib/money.ts formatINR(); never render these as plain numbers.
@@ -526,7 +544,20 @@ export interface Project {
   updatedAt: string;
 }
 
-/** GET /projects/:id/tasks row. */
+/** A project-scoped task label definition. */
+export interface ProjectLabel {
+  id: string;
+  projectId: string;
+  name: string;
+  color: ProjectLabelColor;
+  createdAt: string;
+}
+
+/**
+ * GET /projects/:id/tasks row. The flexible list endpoint enriches each row
+ * with `labels` + the four computed counts; those are present on list/detail
+ * responses and optional elsewhere (e.g. POST/PATCH return the bare task).
+ */
 export interface ProjectTask {
   id: string;
   projectId: string;
@@ -537,10 +568,78 @@ export interface ProjectTask {
   status: ProjectTaskStatus;
   assigneeId?: string | null;
   assigneeName?: string | null;
+  /** Priority bucket; defaults to "none". */
+  priority: ProjectTaskPriority;
+  /** Time estimate in whole minutes, or null when unset. */
+  estimateMinutes: number | null;
+  /** Optional start date (pairs with dueDate). */
+  startDate: string | null;
   dueDate: string | null;
+  /** Stamped when status -> "done", cleared otherwise. */
+  completedAt: string | null;
+  /** Parent task id when this is a subtask (one level only); null otherwise. */
+  parentTaskId: string | null;
   position: number;
   createdAt: string;
   updatedAt: string;
+  // ---- Enriched (list + detail) ----
+  labels?: ProjectLabel[];
+  subtaskCount?: number;
+  subtaskDoneCount?: number;
+  blockedByCount?: number;
+  commentCount?: number;
+}
+
+/** A single dependency edge resolved to the related task. */
+export interface ProjectTaskDependencyEdge {
+  /** The dependency row id (used to DELETE the edge). */
+  depId: string;
+  task: ProjectTask;
+}
+
+/** GET /projects/:id/tasks/:taskId/dependencies payload. */
+export interface ProjectTaskDependencies {
+  /** Tasks that block this one (must finish first). */
+  blockedBy: ProjectTaskDependencyEdge[];
+  /** Tasks this one blocks. */
+  blocks: ProjectTaskDependencyEdge[];
+}
+
+/** Backwards/forwards alias for a single dependency edge. */
+export type ProjectTaskDependency = ProjectTaskDependencyEdge;
+
+/** GET .../comments row. `mentions` are resolved userIds. */
+export interface ProjectTaskComment {
+  id: string;
+  taskId: string;
+  authorId: string;
+  authorName: string | null;
+  body: string;
+  mentions: string[];
+  createdAt: string;
+  updatedAt: string;
+  /** Non-null on soft-deleted comments (normally filtered out server-side). */
+  deletedAt: string | null;
+}
+
+/**
+ * One entry in the merged task feed. `kind` discriminates whether to render the
+ * audit activity or the comment card.
+ */
+export type ProjectTaskFeedEntry =
+  | { kind: "activity"; at: string | null; activity: ProjectActivity }
+  | { kind: "comment"; at: string | null; comment: ProjectTaskComment };
+
+/** GET /projects/:id/tasks/:taskId — the full task detail bundle. */
+export interface ProjectTaskDetail {
+  task: ProjectTask;
+  subtasks: ProjectTask[];
+  labels: ProjectLabel[];
+  dependencies: ProjectTaskDependencies;
+  comments: ProjectTaskComment[];
+  activity: ProjectActivity[];
+  /** Activity + comments merged chronologically, each tagged by `kind`. */
+  feed: ProjectTaskFeedEntry[];
 }
 
 /** GET /projects/:id/milestones row. */

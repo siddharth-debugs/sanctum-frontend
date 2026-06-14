@@ -3,16 +3,19 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-/** A friendly, centered empty state used across every project tab. */
+/** A friendly, centered empty state used across every project tab. An optional
+ * `action` (e.g. a Retry / Clear-filters button) renders below the copy. */
 export function EmptyState({
   icon,
   title,
   description,
+  action,
   className,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
+  action?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -29,6 +32,7 @@ export function EmptyState({
         <p className="font-display text-sm font-semibold">{title}</p>
         <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
       </div>
+      {action}
     </div>
   );
 }

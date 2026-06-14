@@ -5,6 +5,7 @@ import {
   Activity as ActivityIcon,
   Flag,
   LayoutGrid,
+  ShieldAlert,
   Timer,
   TrendingUp,
 } from "lucide-react";
@@ -12,19 +13,29 @@ import { formatDistanceToNow } from "date-fns";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TASK_STATUSES } from "@/lib/constants/project-options";
+import {
+  TASK_STATUSES,
+  PRIORITY_META,
+  PRIORITY_OPTIONS,
+} from "@/lib/constants/project-options";
 import {
   describeActivity,
   ACTIVITY_TONE_CLASS,
 } from "@/lib/constants/activity-options";
+import { PriorityIcon } from "@/components/app/tasks";
 import { fmtDuration, useElapsed, fmtClock } from "@/hooks/use-timers";
 import {
   useProjectOverview,
   useProjectTimers,
   useProjectTimeSummary,
 } from "@/hooks/use-project-insights";
+import { useProjectTasks } from "@/hooks/use-project-tasks";
 import { initials, cn } from "@/lib/utils";
-import type { ProjectActiveTimer, ProjectTaskStatus } from "@/lib/api/types";
+import type {
+  ProjectActiveTimer,
+  ProjectTaskPriority,
+  ProjectTaskStatus,
+} from "@/lib/api/types";
 import { MiniEmpty } from "./shared";
 
 /** A single "Working now" row with a live ticking clock. */
@@ -60,6 +71,9 @@ export function OverviewTab({ projectId }: { projectId: string }) {
   const { data: overview, isLoading } = useProjectOverview(projectId);
   const { data: timers } = useProjectTimers(projectId);
   const { data: summary } = useProjectTimeSummary(projectId);
+  // Flat task list (no subtasks) drives the priority breakdown + blocked stat,
+  // reusing the same enriched rows the Tasks tab renders.
+  const { data: tasks } = useProjectTasks(projectId, { includeSubtasks: false });
 
   if (isLoading || !overview) {
     return (
@@ -85,6 +99,27 @@ export function OverviewTab({ projectId }: { projectId: string }) {
   const byMember = (summary?.byMember ?? []).slice(0, 5);
   const maxMember = Math.max(1, ...byMember.map((m) => m.minutes));
   const recent = overview.recentActivity.slice(0, 6);
+
+  // Priority breakdown (counts by priority) + blocked-tasks stat. Excludes
+  // "none" rows from the bars but still counts them in the total; the blocked
+  // tally is every open task with at least one unresolved blocker.
+  const allTasks = tasks ?? [];
+  const priorityCounts = allTasks.reduce(
+    (acc, t) => {
+      acc[t.priority] = (acc[t.priority] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<ProjectTaskPriority, number>,
+  );
+  const priorityRows = PRIORITY_OPTIONS.map((o) => ({
+    value: o.value as ProjectTaskPriority,
+    count: priorityCounts[o.value as ProjectTaskPriority] ?? 0,
+  })).filter((r) => r.value !== "none");
+  const maxPriority = Math.max(1, ...priorityRows.map((r) => r.count));
+  const prioritizedTotal = priorityRows.reduce((sum, r) => sum + r.count, 0);
+  const blockedCount = allTasks.filter(
+    (t) => (t.blockedByCount ?? 0) > 0,
+  ).length;
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -233,6 +268,67 @@ export function OverviewTab({ projectId }: { projectId: string }) {
               </div>
             ))
           )}
+        </CardContent>
+      </Card>
+
+      {/* Priority breakdown + blocked-tasks stat */}
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+          <Flag className="size-4 text-primary" />
+          <CardTitle className="text-base">Priority breakdown</CardTitle>
+          <span className="ml-auto text-sm tabular-nums text-muted-foreground">
+            {prioritizedTotal} prioritized
+          </span>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+          {prioritizedTotal === 0 ? (
+            <MiniEmpty>No tasks have a priority set yet.</MiniEmpty>
+          ) : (
+            priorityRows.map((r) => {
+              const meta = PRIORITY_META[r.value];
+              return (
+                <div key={r.value} className="flex items-center gap-3">
+                  <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs font-medium">
+                    <PriorityIcon priority={r.value} hideLabel />
+                    {meta.label}
+                  </span>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${(r.count / maxPriority) * 100}%`,
+                        backgroundColor: meta.color,
+                      }}
+                    />
+                  </div>
+                  <span className="w-6 shrink-0 text-right text-sm font-semibold tabular-nums">
+                    {r.count}
+                  </span>
+                </div>
+              );
+            })
+          )}
+          {/* Blocked tasks stat — icon + label, never colour-only. */}
+          <div className="flex items-center gap-3 border-t pt-3">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <ShieldAlert
+                className={cn(
+                  "size-4",
+                  blockedCount > 0 ? "text-destructive" : "text-muted-foreground",
+                )}
+                aria-hidden
+              />
+              Blocked tasks
+            </span>
+            <span
+              className={cn(
+                "ml-auto font-display text-lg font-semibold tabular-nums",
+                blockedCount > 0 && "text-destructive",
+              )}
+            >
+              {blockedCount}
+            </span>
+          </div>
         </CardContent>
       </Card>
 

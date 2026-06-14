@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   Pencil,
@@ -102,8 +102,21 @@ export default function ProjectDetailPage({
   const { data: overview } = useProjectOverview(projectId);
   const deleteProject = useDeleteProject();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const formSheet = useDisclosure<Project | null>();
   const deleteDialog = useDisclosure();
+
+  // Deep-link target: a `?task=` URL must land on the Tasks tab so the detail
+  // sheet (which lives in TasksTab and reads `?task=`) can open. The tab stays
+  // controlled but free to switch afterwards; arriving with a task forces Tasks.
+  const deepLinkedTask = searchParams.get("task");
+  const [tab, setTab] = React.useState<string>(
+    deepLinkedTask ? "tasks" : "overview",
+  );
+  // If a task link is opened after mount (e.g. client-side nav), switch to Tasks.
+  React.useEffect(() => {
+    if (deepLinkedTask) setTab("tasks");
+  }, [deepLinkedTask]);
 
   const onConfirmDelete = () => {
     if (!project) return;
@@ -230,7 +243,7 @@ export default function ProjectDetailPage({
         />
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
