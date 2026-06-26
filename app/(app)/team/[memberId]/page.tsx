@@ -19,6 +19,8 @@ import {
   ListTodo,
   Plus,
   Activity,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -52,13 +54,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTeamMember, useUpdateMember, useDeleteMember } from "@/hooks/use-team";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { initials, formatDate } from "@/lib/utils";
 import { formatINR } from "@/lib/money";
 import { fmtHours } from "@/lib/constants/team-options";
 import { ApiError } from "@/lib/api/client";
-import type { TeamMemberDetail } from "@/lib/api/types";
+import { PermissionsEditor } from "@/components/app/permissions-editor";
+import { MemberAttendancePanel } from "@/components/app/member-attendance";
+import { fullAccess } from "@/lib/permissions";
+import { useCustomRoles } from "@/hooks/use-roles";
+import { useCan } from "../../session-context";
+import type {
+  PermissionMap,
+  Role,
+  TeamMemberDetail,
+} from "@/lib/api/types";
 
 /** A label/value row inside a card. */
 function InfoRow({
@@ -121,6 +139,128 @@ function EmptyState({
       </div>
       {action}
     </div>
+  );
+}
+
+/** Role + module-permission editor (owner/admin only; owner target locked). */
+function AccessTab({ member }: { member: TeamMemberDetail }) {
+  const { canManage } = useCan();
+  const update = useUpdateMember(member.id);
+  const { data: customRoles } = useCustomRoles(canManage("team"));
+
+  const isOwnerTarget = member.role === "owner";
+  // Only owner/admin with Team "manage" may edit (the API enforces this too).
+  const editable = canManage("team") && !isOwnerTarget;
+
+  const initialPerms = isOwnerTarget
+    ? fullAccess()
+    : (member.permissions ?? fullAccess());
+  // roleKey is the built-in 'member'/'admin', or a custom role id.
+  const initialRoleKey = member.customRoleId ?? member.role;
+
+  const [roleKey, setRoleKey] = React.useState<string>(initialRoleKey);
+  const [perms, setPerms] = React.useState<PermissionMap>(initialPerms);
+
+  // Re-sync if the member data changes underneath us (e.g. after a save).
+  React.useEffect(() => {
+    setRoleKey(member.customRoleId ?? member.role);
+    setPerms(isOwnerTarget ? fullAccess() : (member.permissions ?? fullAccess()));
+  }, [member.permissions, member.role, member.customRoleId, isOwnerTarget]);
+
+  const selectedCustom = (customRoles ?? []).find((r) => r.id === roleKey);
+  // When a custom role is selected, permissions come from the role (read-only);
+  // otherwise the grid edits this member's personal overrides.
+  const editorValue = selectedCustom ? selectedCustom.permissions : perms;
+  const editorDisabled = !editable || !!selectedCustom;
+
+  const roleChanged = roleKey !== initialRoleKey;
+  const permsChanged =
+    !selectedCustom && JSON.stringify(perms) !== JSON.stringify(initialPerms);
+  const dirty = roleChanged || permsChanged;
+
+  const onSave = () => {
+    const payload = selectedCustom
+      ? { customRoleId: roleKey } // role drives; server clears personal overrides
+      : {
+          ...(roleChanged ? { role: roleKey as Role, customRoleId: null } : {}),
+          permissions: perms,
+        };
+    update.mutate(payload, {
+      onSuccess: () => toast.success("Access updated"),
+      onError: (err) =>
+        toast.error(
+          err instanceof ApiError ? err.message : "Couldn't update access",
+        ),
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-primary" /> Role &amp; permissions
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-0">
+        {isOwnerTarget ? (
+          <div className="flex items-start gap-3 rounded-lg border bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] p-4">
+            <Lock className="mt-0.5 size-4 text-primary" />
+            <div className="text-sm">
+              <p className="font-semibold">The owner always has full access.</p>
+              <p className="text-muted-foreground">
+                The owner&apos;s role and permissions can&apos;t be changed.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-2 sm:max-w-xs">
+            <label className="text-sm font-medium">Role</label>
+            <Select
+              value={roleKey}
+              onValueChange={setRoleKey}
+              disabled={!editable}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                {(customRoles ?? []).map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {selectedCustom
+                ? `Permissions come from the “${selectedCustom.name}” role (base: ${selectedCustom.baseRole}). Edit it in Settings → Roles & Permissions.`
+                : "Admins manage clients, team, and settings. The grid below sets this member’s personal overrides on top of the role."}
+            </p>
+          </div>
+        )}
+
+        <PermissionsEditor
+          value={editorValue}
+          onChange={setPerms}
+          disabled={editorDisabled}
+        />
+
+        {editable && (
+          <div className="flex items-center justify-end gap-3 border-t pt-4">
+            {dirty && (
+              <span className="text-xs text-muted-foreground">
+                Unsaved changes
+              </span>
+            )}
+            <Button onClick={onSave} disabled={!dirty || update.isPending}>
+              {update.isPending ? "Saving…" : "Save access"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -219,7 +359,7 @@ export default function MemberDetailPage({
             <span className="flex flex-wrap items-center gap-2.5">
               {name}
               <StatusBadge status={member.status} />
-              <RoleBadge role={member.role} />
+              <RoleBadge role={member.role} label={member.roleName} />
             </span>
           </span>
         }
@@ -264,6 +404,8 @@ export default function MemberDetailPage({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="access">Access</TabsTrigger>
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="timelogs">Time Logs</TabsTrigger>
@@ -352,6 +494,16 @@ export default function MemberDetailPage({
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* ACCESS — role + module permissions */}
+        <TabsContent value="access" className="mt-4">
+          <AccessTab member={member} />
+        </TabsContent>
+
+        {/* ATTENDANCE — read-only calendar + summary for this member */}
+        <TabsContent value="attendance" className="mt-4">
+          <MemberAttendancePanel userId={member.id} />
         </TabsContent>
 
         {/* PROJECTS */}

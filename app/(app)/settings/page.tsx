@@ -8,10 +8,14 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/app/page-header";
 import { GlassCard } from "@/components/app/glass-card";
 import { UsageLimits } from "@/components/app/usage-limits";
+import { RolePermissionsMatrix } from "@/components/app/role-permissions-matrix";
+import { CustomRolesManager } from "@/components/app/custom-roles-manager";
+import { AttendanceSettings } from "@/components/app/attendance-settings";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useSession } from "../session-context";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSession, useCan } from "../session-context";
 import { useUpdateAgency } from "@/hooks/use-agency";
 import { ApiError } from "@/lib/api/client";
 
@@ -20,14 +24,16 @@ export default function SettingsPage() {
   const isDark = theme === "dark";
 
   const session = useSession();
+  const { canManage } = useCan();
   const updateAgency = useUpdateAgency();
   const [name, setName] = React.useState(session.agency?.name ?? "");
   const [brandColor, setBrandColor] = React.useState(
     session.agency?.brandColor ?? "#1F8FD6",
   );
 
-  const canEditAgency =
+  const isPrivileged =
     session.user.role === "owner" || session.user.role === "admin";
+  const canEditAgency = isPrivileged && canManage("settings");
 
   const saveProfile = () => {
     updateAgency.mutate(
@@ -51,10 +57,22 @@ export default function SettingsPage() {
           </>
         }
         title="Settings"
-        description="Manage your agency profile and the look of your workspace and client portals."
+        description="Manage your agency profile, roles & permissions, and the look of your workspace."
       />
 
-      <GlassCard className="p-6">
+      <Tabs defaultValue="general">
+        <TabsList>
+          <TabsTrigger value="general">General</TabsTrigger>
+          {isPrivileged && (
+            <TabsTrigger value="roles">Roles &amp; Permissions</TabsTrigger>
+          )}
+          {isPrivileged && (
+            <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          )}
+        </TabsList>
+
+        <TabsContent value="general" className="mt-5 space-y-6">
+          <GlassCard className="p-6">
         <h2 className="font-display text-lg font-semibold">Agency profile</h2>
         <p className="mb-4 text-sm text-muted-foreground">
           Shown on client portals and welcome emails.
@@ -119,6 +137,23 @@ export default function SettingsPage() {
           </div>
         </div>
       </GlassCard>
+        </TabsContent>
+
+        {isPrivileged && (
+          <TabsContent value="roles" className="mt-5 space-y-8">
+            <RolePermissionsMatrix canEdit={canEditAgency} />
+            <div className="border-t pt-6">
+              <CustomRolesManager canEdit={canEditAgency} />
+            </div>
+          </TabsContent>
+        )}
+
+        {isPrivileged && (
+          <TabsContent value="attendance" className="mt-5">
+            <AttendanceSettings />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

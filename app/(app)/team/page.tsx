@@ -80,7 +80,7 @@ function MemberCard({ member }: { member: TeamMember }) {
             {disabled && <InactiveChip />}
           </div>
           <div className="mt-2">
-            <RoleBadge role={member.role} />
+            <RoleBadge role={member.role} label={member.roleName} />
           </div>
         </div>
       </div>

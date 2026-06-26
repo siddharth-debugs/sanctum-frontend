@@ -34,6 +34,23 @@ import type { Client } from "@/lib/api/types";
 
 const FORM_ID = "client-form";
 
+/** Post statuses the read-only client portal can expose. */
+const PORTAL_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "pending_approval", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "changes_requested", label: "Changes" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "posted", label: "Posted" },
+] as const;
+
+const DEFAULT_PORTAL_STATUSES = [
+  "pending_approval",
+  "approved",
+  "scheduled",
+  "posted",
+];
+
 /** Small muted section heading used between form blocks. */
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -75,6 +92,7 @@ export function ClientFormSheet({
       relationshipHealth: "",
       nextFollowUpAt: undefined,
       active: true,
+      portalVisibleStatuses: DEFAULT_PORTAL_STATUSES,
       internalNotes: "",
       brandColor: "",
       instagram: "",
@@ -104,6 +122,8 @@ export function ClientFormSheet({
           ? new Date(client.nextFollowUpAt)
           : undefined,
         active: client ? client.status === "active" : true,
+        portalVisibleStatuses:
+          client?.portalVisibleStatuses ?? DEFAULT_PORTAL_STATUSES,
         internalNotes: client?.internalNotes ?? "",
         brandColor: client?.brandColor ?? "",
         instagram: client?.handles?.instagram ?? "",
@@ -119,31 +139,41 @@ export function ClientFormSheet({
     if (values.facebook) handles.facebook = values.facebook;
     if (values.linkedin) handles.linkedin = values.linkedin;
 
+    // Send `null` for cleared fields so an edit can actually unset them
+    // (the backend only writes a column when the key is present).
+    const orNull = (v?: string) => (v && v.trim() !== "" ? v.trim() : null);
+
     const payload: ClientInput = {
       name: values.name,
-      industry: values.industry || undefined,
-      website: values.website || undefined,
-      phoneCc: values.phone ? values.phoneCc || undefined : undefined,
-      phone: values.phone || undefined,
-      contactEmail: values.contactEmail || undefined,
-      clientSource: values.clientSource || undefined,
-      gstNumber: values.gstNumber || undefined,
+      industry: orNull(values.industry),
+      website: orNull(values.website),
+      phoneCc: values.phone ? orNull(values.phoneCc) : null,
+      phone: orNull(values.phone),
+      contactEmail: orNull(values.contactEmail),
+      clientSource: (values.clientSource || null) as ClientInput["clientSource"],
+      gstNumber: orNull(values.gstNumber),
       paymentTermsDays:
         typeof values.paymentTermsDays === "number"
           ? values.paymentTermsDays
-          : undefined,
-      billingAddress: values.billingAddress || undefined,
-      billingState: values.billingState || undefined,
-      billingCity: values.billingCity || undefined,
-      billingPincode: values.billingPincode || undefined,
-      relationshipHealth: values.relationshipHealth || undefined,
+          : null,
+      billingAddress: orNull(values.billingAddress),
+      billingState: orNull(values.billingState),
+      billingCity: orNull(values.billingCity),
+      billingPincode: orNull(values.billingPincode),
+      // relationshipHealth has a NOT NULL default; only set when chosen.
+      relationshipHealth: values.relationshipHealth
+        ? (values.relationshipHealth as ClientInput["relationshipHealth"])
+        : undefined,
       nextFollowUpAt: values.nextFollowUpAt
         ? values.nextFollowUpAt.toISOString()
-        : undefined,
-      internalNotes: values.internalNotes || undefined,
-      brandColor: values.brandColor || undefined,
-      status: values.active ? "active" : "archived",
-      ...(Object.keys(handles).length ? { handles } : {}),
+        : null,
+      internalNotes: orNull(values.internalNotes),
+      brandColor: orNull(values.brandColor),
+      // 'Active client' toggle — backend create only honours `isActive`.
+      isActive: values.active,
+      portalVisibleStatuses: values.portalVisibleStatuses,
+      // Always send handles (possibly empty) so cleared handles persist.
+      handles,
     };
 
     const mutation = isEdit ? update : create;
@@ -332,6 +362,47 @@ export function ClientFormSheet({
                 label="Active client"
                 description="Inactive clients are archived and hidden from the active list."
               />
+
+              {/* Portal visibility — which post statuses the client can see. */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Portal-visible statuses</p>
+                <p className="text-xs text-muted-foreground">
+                  Posts in these statuses appear on the client&apos;s read-only
+                  portal.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PORTAL_STATUS_OPTIONS.map((opt) => {
+                    const selected = (
+                      form.watch("portalVisibleStatuses") ?? []
+                    ).includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          const cur = form.getValues("portalVisibleStatuses") ?? [];
+                          form.setValue(
+                            "portalVisibleStatuses",
+                            selected
+                              ? cur.filter((s) => s !== opt.value)
+                              : [...cur, opt.value],
+                            { shouldDirty: true },
+                          );
+                        }}
+                        className={
+                          "rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors " +
+                          (selected
+                            ? "border-transparent bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted")
+                        }
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <TextField
                 control={form.control}
                 name="brandColor"

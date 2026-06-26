@@ -5,7 +5,6 @@ import { CalendarDays, Pencil, ExternalLink } from "lucide-react";
 
 import { ViewModal } from "@/components/app/view-modal";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/app/status-badge";
 import { formatDate } from "@/lib/utils";
 import type { Client } from "@/lib/api/types";
 
@@ -88,10 +87,16 @@ export function ClientViewModal({
               {client.contactEmail ?? "No contact email"}
             </div>
           </div>
-          <StatusBadge
-            status={client.status === "active" ? "posted" : "draft"}
-            className="ml-auto"
-          />
+          <span
+            className={
+              "ml-auto rounded-full px-2.5 py-0.5 text-xs font-semibold " +
+              (client.status === "active"
+                ? "text-success bg-[color-mix(in_srgb,var(--success)_15%,transparent)]"
+                : "text-muted-foreground bg-muted")
+            }
+          >
+            {client.status === "active" ? "Active" : "Archived"}
+          </span>
         </div>
 
         <div>

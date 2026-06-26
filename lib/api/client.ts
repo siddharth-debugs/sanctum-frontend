@@ -35,9 +35,47 @@ function buildUrl(path: string, query?: RequestOpts["query"]) {
 }
 
 /**
+ * Auth endpoints that must NOT trigger a refresh-on-401 (avoids loops on the
+ * refresh/login flow itself).
+ */
+const NO_REFRESH_PATHS = [
+  "/auth/login",
+  "/auth/signup",
+  "/auth/refresh",
+  "/auth/logout",
+];
+
+/**
+ * Shared in-flight refresh. When the 15-minute access token expires, many
+ * requests 401 at once; they all await this single POST /auth/refresh and then
+ * retry, instead of each hammering the refresh endpoint.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function refreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(buildUrl("/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+/**
  * Typed fetch wrapper hitting the separate Express API at NEXT_PUBLIC_API_URL.
  * Returns the unwrapped `data` from the standard envelope. Sends credentials so
  * httpOnly cookie auth works cross-origin; also supports Bearer + portal tokens.
+ *
+ * On a 401 (expired access token) it transparently calls POST /auth/refresh
+ * once and retries, so the session stays alive without flooding the console or
+ * bouncing the user to /login.
  */
 export async function apiRequest<T>(
   path: string,
@@ -45,18 +83,32 @@ export async function apiRequest<T>(
 ): Promise<ApiEnvelope<T>> {
   const { body, token, portalToken, headers, query, ...rest } = opts;
 
-  const res = await fetch(buildUrl(path, query), {
-    ...rest,
-    credentials: "include",
-    headers: {
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {}),
-      ...headers,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
+  const send = () =>
+    fetch(buildUrl(path, query), {
+      ...rest,
+      credentials: "include",
+      headers: {
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {}),
+        ...headers,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+
+  let res = await send();
+
+  // Cookie-auth 401 -> try a single refresh + retry. Skip for portal/Bearer
+  // calls and for the auth flow itself.
+  const canRefresh =
+    !portalToken &&
+    !token &&
+    !NO_REFRESH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+  if (res.status === 401 && canRefresh) {
+    const ok = await refreshSession();
+    if (ok) res = await send();
+  }
 
   if (res.status === 204) {
     return { data: undefined as T };

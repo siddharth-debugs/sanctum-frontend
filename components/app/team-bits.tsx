@@ -6,18 +6,24 @@ import type { Role } from "@/lib/api/types";
 const pill =
   "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold";
 
-/** Evergreen role pill: Owner=primary pine, Admin=accent brass, Member=muted. */
+/**
+ * Evergreen role pill: Owner=primary pine, Admin=accent brass, Member=muted.
+ * `label` overrides the text (e.g. a custom role name) while keeping the tier
+ * colour derived from `role`.
+ */
 export function RoleBadge({
   role,
+  label,
   className,
 }: {
   role: Role;
+  label?: string;
   className?: string;
 }) {
   return (
     <span className={cn(pill, ROLE_BADGE_CLASS[role], className)}>
       <span className="size-1.5 rounded-full bg-current" />
-      {ROLE_LABEL[role]}
+      {label ?? ROLE_LABEL[role]}
     </span>
   );
 }

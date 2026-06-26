@@ -27,12 +27,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, initials } from "@/lib/utils";
+import type { ModuleKey } from "@/lib/api/types";
 
 export interface SidebarNavItem {
   title: string;
   url: string;
   icon: LucideIcon;
   badge?: string | number;
+  /** Module this item belongs to (drives RBAC visibility). */
+  module?: ModuleKey;
 }
 
 export interface SidebarNavSection {
@@ -79,7 +82,7 @@ export function AppSidebar({
         <div className="flex items-center gap-2.5 px-1 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/sanctum-logo.png"
+            src="/sanctum-logo.png?v=2"
             alt="Sanctum"
             width={36}
             height={36}

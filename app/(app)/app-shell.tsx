@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   SidebarInset,
@@ -13,15 +13,49 @@ import { AppSidebar } from "@/components/app/app-sidebar";
 import { AuroraBackground } from "@/components/app/aurora-background";
 import { ThemeSwitcher } from "@/components/app/theme-switcher";
 import { ActiveTimerBar } from "@/components/app/active-timer-bar";
-import { AiChatLauncher } from "@/components/app/ai-chat-launcher";
+import { AiChatLauncher, AiChatButton } from "@/components/app/ai-chat-launcher";
+import { NotificationBell } from "@/components/app/notification-bell";
+import { NoModuleAccess } from "@/components/app/no-module-access";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APP_NAV } from "@/lib/nav";
+import { canView, moduleForPath, firstAccessibleModule } from "@/lib/permissions";
 import { useMe, isUnauthenticated } from "@/hooks/use-me";
 import { useClients } from "@/hooks/use-clients";
 import { useLogout } from "@/hooks/use-auth";
 import { useUnreadCount } from "@/hooks/use-messages";
+import { useNotificationStream } from "@/hooks/use-notifications";
+import { refreshSession } from "@/lib/api/client";
 import { SocketProvider } from "@/lib/socket";
 import { SessionProvider } from "./session-context";
+
+/**
+ * Keep the session warm: the access token lives 15 min, so refresh every 10 min
+ * (and when the tab regains focus after being idle) to avoid a 401 storm.
+ */
+function useSessionKeepAlive() {
+  React.useEffect(() => {
+    const INTERVAL_MS = 10 * 60 * 1000;
+    let last = Date.now();
+    const refresh = () => {
+      last = Date.now();
+      void refreshSession();
+    };
+    const id = setInterval(refresh, INTERVAL_MS);
+    const onVisible = () => {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - last > INTERVAL_MS
+      ) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+}
 
 /** Full-screen splash while we resolve the session. */
 function Splash() {
@@ -86,31 +120,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const me = useMe();
+  const pathname = usePathname();
   const logout = useLogout();
   const { data: clients } = useClients();
   const { data: unread } = useUnreadCount();
+  useNotificationStream();
+  useSessionKeepAlive();
   const activeClients = (clients ?? []).filter((c) => c.status === "active");
 
-  // Inject live counts into the static nav: a Messages unread badge and the
-  // active-client count (reusing the existing SidebarMenuBadge mechanism).
+  const session = me.data!;
+  const permissions = session.permissions;
+
+  // Inject live counts into the static nav, then drop any module the user can't
+  // at least VIEW (and any section left empty after filtering).
   const nav = React.useMemo(
     () =>
       APP_NAV.map((section) => ({
         ...section,
-        items: section.items.map((item) => {
-          if (item.url === "/messages") {
-            return { ...item, badge: unread && unread > 0 ? unread : undefined };
-          }
-          if (item.url === "/clients") {
-            return { ...item, badge: activeClients.length || undefined };
-          }
-          return item;
-        }),
-      })),
-    [unread, activeClients.length],
+        items: section.items
+          .filter((item) => !item.module || canView(permissions, item.module))
+          .map((item) => {
+            if (item.url === "/messages") {
+              return { ...item, badge: unread && unread > 0 ? unread : undefined };
+            }
+            if (item.url === "/clients") {
+              return { ...item, badge: activeClients.length || undefined };
+            }
+            return item;
+          }),
+      })).filter((section) => section.items.length > 0),
+    [unread, activeClients.length, permissions],
   );
 
-  const session = me.data!;
+  // Route guard: block direct navigation to a module the user can't view.
+  const currentModule = moduleForPath(pathname);
+  const blocked = currentModule != null && !canView(permissions, currentModule);
+  const landing = firstAccessibleModule(permissions);
+
   const userName = session.user.fullName ?? session.user.email;
 
   return (
@@ -125,7 +171,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         user={{
           name: userName,
           email: session.user.email,
-          role: session.user.role,
+          role: session.user.roleName ?? session.user.role,
         }}
         onLogout={() => logout.mutate()}
       />
@@ -139,10 +185,21 @@ function Shell({ children }: { children: React.ReactNode }) {
           <span className="font-display text-sm font-semibold">Sanctum</span>
           <div className="ml-auto flex items-center gap-2">
             <ActiveTimerBar />
+            <AiChatButton />
+            <NotificationBell />
             <ThemeSwitcher />
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+          {blocked ? (
+            <NoModuleAccess
+              module={currentModule}
+              fallbackHref={landing ? `/${landing}` : "/dashboard"}
+            />
+          ) : (
+            children
+          )}
+        </main>
       </SidebarInset>
       {/* Global floating AI chat — available on every authed page. */}
       <AiChatLauncher />

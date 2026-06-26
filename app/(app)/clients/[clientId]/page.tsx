@@ -62,8 +62,21 @@ import {
 import { DocumentUploadDialog } from "@/components/app/document-upload-dialog";
 import { DocumentPreviewModal } from "@/components/app/document-preview-modal";
 import { GlassCard } from "@/components/app/glass-card";
-import { useClient } from "@/hooks/use-clients";
+import { useClient, useUpdateClient } from "@/hooks/use-clients";
 import { useProjects } from "@/hooks/use-projects";
+import { useTeam } from "@/hooks/use-team";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ContactsPanel } from "@/components/app/crm/contacts-panel";
+import { ActivityPanel } from "@/components/app/crm/activity-panel";
+import { DealsPanel } from "@/components/app/crm/deals-panel";
+import { ClientTags } from "@/components/app/crm/client-tags";
+import { useSession } from "../../session-context";
 import { useInvoices } from "@/hooks/use-invoices";
 import { useExpenses } from "@/hooks/use-expenses";
 import { useDocuments } from "@/hooks/use-documents";
@@ -526,8 +539,13 @@ export default function ClientDetailPage({
   params: Promise<{ clientId: string }>;
 }) {
   const { clientId } = React.use(params);
+  const session = useSession();
+  const canManage =
+    session.user.role === "owner" || session.user.role === "admin";
   const { data: client, isLoading, error } = useClient(clientId);
   const { data: clientProjects } = useProjects({ clientId });
+  const { data: team } = useTeam();
+  const updateClient = useUpdateClient(clientId);
   const qc = useQueryClient();
   const router = useRouter();
   const formSheet = useDisclosure<Client | null>();
@@ -649,16 +667,20 @@ export default function ClientDetailPage({
                 <CalendarDays className="size-4" /> Calendar
               </Link>
             </Button>
-            <Button variant="outline" onClick={() => formSheet.onOpen(client)}>
-              <Pencil className="size-4" /> Edit
-            </Button>
-            <Button
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={() => deleteDialog.onOpen()}
-            >
-              <Trash2 className="size-4" /> Delete
-            </Button>
+            {canManage && (
+              <Button variant="outline" onClick={() => formSheet.onOpen(client)}>
+                <Pencil className="size-4" /> Edit
+              </Button>
+            )}
+            {canManage && client.status === "active" && (
+              <Button
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={() => deleteDialog.onOpen()}
+              >
+                <Trash2 className="size-4" /> Delete
+              </Button>
+            )}
           </>
         }
       />
@@ -666,6 +688,9 @@ export default function ClientDetailPage({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="deals">Deals</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="financials">Financials</TabsTrigger>
           <TabsTrigger value="documents">Files</TabsTrigger>
@@ -675,6 +700,43 @@ export default function ClientDetailPage({
         {/* OVERVIEW */}
         <TabsContent value="overview" className="mt-4">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Account</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">Account owner</span>
+                  {canManage ? (
+                    <Select
+                      value={client.ownerId ?? "__none__"}
+                      onValueChange={(v) =>
+                        updateClient.mutate({ ownerId: v === "__none__" ? null : v })
+                      }
+                    >
+                      <SelectTrigger className="w-56">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Unassigned</SelectItem>
+                        {(team ?? []).map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.fullName ?? m.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="text-sm font-medium">{client.ownerName ?? "—"}</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">Tags</span>
+                  <ClientTags clientId={client.id} />
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Contact Information</CardTitle>
@@ -777,6 +839,18 @@ export default function ClientDetailPage({
         </TabsContent>
 
         {/* PROJECTS */}
+        <TabsContent value="contacts" className="mt-4">
+          <ContactsPanel clientId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-4">
+          <ActivityPanel clientId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="deals" className="mt-4">
+          <DealsPanel clientId={client.id} />
+        </TabsContent>
+
         <TabsContent value="projects" className="mt-4">
           <ClientProjectsTab
             clientId={client.id}

@@ -60,6 +60,8 @@ export const clientSchema = z.object({
     .or(z.literal("")),
   nextFollowUpAt: z.date().optional(),
   active: z.boolean(),
+  /** Post statuses the client portal exposes (checkboxes). */
+  portalVisibleStatuses: z.array(z.string()),
   internalNotes: z.string().max(2000).optional().or(z.literal("")),
 
   // BRANDING + HANDLES

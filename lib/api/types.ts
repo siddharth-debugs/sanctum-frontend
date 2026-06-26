@@ -6,6 +6,46 @@
 
 export type Role = "owner" | "admin" | "member";
 
+/** Sidebar/dashboard modules that module-level RBAC can gate. */
+export type ModuleKey =
+  | "dashboard"
+  | "clients"
+  | "projects"
+  | "team"
+  | "attendance"
+  | "calendar"
+  | "messages"
+  | "documents"
+  | "sheets"
+  | "ai"
+  | "finance"
+  | "settings";
+
+/** Per-module access level: none < view < manage. */
+export type AccessLevel = "none" | "view" | "manage";
+
+/** Effective access level for every module (returned by /auth/me + /team). */
+export type PermissionMap = Record<ModuleKey, AccessLevel>;
+
+/** One entry in the code-defined module catalog. */
+export interface ModuleInfo {
+  key: ModuleKey;
+  label: string;
+  description: string;
+}
+
+/** GET/PUT /agency/roles payload — the per-role permission matrix. */
+export interface RolePermissions {
+  modules: ModuleInfo[];
+  roles: Record<Role, PermissionMap>;
+}
+
+/** PUT /agency/roles body — partial per-role overrides (admin/member). */
+export interface UpdateRolePermissionsInput {
+  admin?: Partial<PermissionMap>;
+  member?: Partial<PermissionMap>;
+}
+
 export type PostType = "reel" | "story" | "carousel" | "post";
 
 /** Platforms are free-form strings on the backend; these are the seeded ones. */
@@ -393,12 +433,24 @@ export interface PlanSummary {
   maxAiGenerations: number | null;
 }
 
+/** A custom role (named permission preset) — GET /agency/custom-roles. */
+export interface CustomRole {
+  id: string;
+  name: string;
+  colorToken: string;
+  baseRole: "admin" | "member";
+  permissions: PermissionMap;
+}
+
 /** Auth-context user as returned by /auth/me and /auth/login. */
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string | null;
   role: Role;
+  /** Custom role id (when assigned one) + display name (custom or built-in). */
+  customRoleId?: string | null;
+  roleName?: string;
 }
 
 /** GET /auth/me payload. */
@@ -406,6 +458,8 @@ export interface MeResponse {
   user: AuthUser;
   agency: Agency | null;
   plan: PlanSummary | null;
+  /** Effective module permissions for the signed-in user. */
+  permissions: PermissionMap;
 }
 
 /** POST /auth/login payload. */
@@ -426,6 +480,10 @@ export interface TeamMember {
   email: string;
   fullName: string | null;
   role: Role;
+  /** Custom role id when assigned one; null = built-in role. */
+  customRoleId: string | null;
+  /** Display label: custom role name, or the built-in role label. */
+  roleName: string;
   status: UserStatus;
   lastLoginAt: string | null;
   designation: string | null;
@@ -435,6 +493,8 @@ export interface TeamMember {
   hourlyRate: number | null;
   weeklyCapacityHrs: number;
   skills: string[];
+  /** Effective module permissions (role defaults merged with overrides). */
+  permissions: PermissionMap;
   joinedAt: string;
   activeTaskCount: number;
   projectCount: number;
@@ -479,6 +539,309 @@ export interface TeamMemberDetail extends TeamMember {
   totalLoggedMinutes: number;
 }
 
+// ---------------------------------------------------------------------------
+// Attendance — daily check-in/out, calendar, monthly summary. Times are ISO
+// instants; `day` is a 'YYYY-MM-DD' key in the agency timezone.
+// ---------------------------------------------------------------------------
+
+export type AttendanceStatus =
+  | "present"
+  | "late"
+  | "half_day"
+  | "absent"
+  | "on_leave"
+  | "holiday"
+  | "weekly_off"
+  | "none";
+
+/** GET /attendance/policy — the effective work policy. */
+export interface AttendancePolicy {
+  timezone: string;
+  workdays: number[]; // 0=Sun..6=Sat
+  /** Saturday occurrences (1..5) that are off even when Sat is a workday. */
+  saturdayOffWeeks: number[];
+  shiftStartMin: number;
+  shiftEndMin: number;
+  fullDayMinutes: number;
+  halfDayMinutes: number;
+  lateGraceMinutes: number;
+  countOvertime: boolean;
+  enforceIp: boolean;
+  allowedIps: string[];
+  enforceGeo: boolean;
+  geoLat: number | null;
+  geoLng: number | null;
+  geoRadiusM: number | null;
+}
+
+/** A single stored attendance record (a member's day). */
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  day: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  workedMinutes: number;
+  overtimeMinutes: number;
+  status: AttendanceStatus;
+  isLate: boolean;
+  source: "self" | "admin" | "regularized" | "system" | null;
+  note: string | null;
+}
+
+/** GET /attendance/today payload. */
+export interface AttendanceToday {
+  day: string;
+  serverNow: string;
+  timezone: string;
+  shiftStartMin: number;
+  shiftEndMin: number;
+  fullDayMinutes: number;
+  enforceGeo: boolean;
+  record: AttendanceRecord | null;
+}
+
+/** One day in the month calendar (record fields + classification). */
+export interface AttendanceCalendarDay extends Omit<AttendanceRecord, "id" | "source"> {
+  id: string | null;
+  weekday: number;
+  isWorkday: boolean;
+  source: AttendanceRecord["source"];
+  holidayName?: string | null;
+}
+
+/** GET /attendance/calendar payload. */
+export interface AttendanceCalendar {
+  month: string;
+  userId: string;
+  timezone: string;
+  today: string;
+  days: AttendanceCalendarDay[];
+}
+
+/** GET /attendance/summary payload. */
+export interface AttendanceSummary {
+  month: string;
+  userId: string;
+  summary: {
+    present: number;
+    late: number;
+    halfDay: number;
+    absent: number;
+    onLeave: number;
+    holiday: number;
+    weeklyOff: number;
+    workingDays: number;
+    workedMinutes: number;
+    overtimeMinutes: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CRM expansion — contacts, activity notes, deals/pipeline, tags, follow-ups.
+// ---------------------------------------------------------------------------
+
+/** A person at a client (multiple per client). */
+export interface ClientContact {
+  id: string;
+  clientId: string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  isPrimary: boolean;
+  isBilling: boolean;
+  notes: string | null;
+  createdAt: string;
+}
+
+export type ClientNoteType = "note" | "call" | "meeting" | "email" | "task";
+
+/** A timeline entry on a client (note / call / meeting / email / task). */
+export interface ClientNote {
+  id: string;
+  clientId: string;
+  authorId: string | null;
+  authorName: string | null;
+  type: ClientNoteType;
+  body: string;
+  pinned: boolean;
+  dueAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export type DealStage =
+  | "lead"
+  | "qualified"
+  | "proposal"
+  | "negotiation"
+  | "won"
+  | "lost";
+
+/** A sales opportunity. valuePaise is INTEGER PAISE. */
+export interface Deal {
+  id: string;
+  clientId: string;
+  clientName: string | null;
+  title: string;
+  stage: DealStage;
+  valuePaise: number;
+  currency: string;
+  probability: number;
+  expectedCloseAt: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  lostReason: string | null;
+  notes: string | null;
+  closedAt: string | null;
+  createdAt: string;
+}
+
+/** A segmentation tag. */
+export interface ClientTag {
+  id: string;
+  name: string;
+  colorToken: string;
+}
+
+/** A client with a follow-up due (GET /crm/follow-ups). */
+export interface FollowUp {
+  id: string;
+  name: string;
+  brandColor: string | null;
+  nextFollowUpAt: string | null;
+  overdue: boolean;
+  relationshipHealth: RelationshipHealth | null;
+  ownerName: string | null;
+}
+
+/** An agency-wide holiday. */
+export interface Holiday {
+  id: string;
+  day: string;
+  name: string;
+  recurring: boolean;
+  createdAt?: string;
+}
+
+/** A leave type in the agency catalog. */
+export interface LeaveType {
+  id: string;
+  name: string;
+  colorToken: string;
+  paid: boolean;
+  annualQuota: number; // 0 = unlimited
+  active: boolean;
+  sortOrder: number;
+}
+
+export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+/** A leave request (apply -> approve/reject). */
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string | null;
+  leaveTypeId: string;
+  leaveTypeName: string | null;
+  leaveTypeColor: string | null;
+  startDay: string;
+  endDay: string;
+  halfDayStart: boolean;
+  halfDayEnd: boolean;
+  days: number;
+  reason: string | null;
+  status: LeaveStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+}
+
+/** Per-type leave balance for a year. */
+export interface LeaveBalance {
+  leaveTypeId: string;
+  name: string;
+  colorToken: string;
+  paid: boolean;
+  annualQuota: number;
+  used: number;
+  remaining: number | null; // null = unlimited
+}
+
+export interface LeaveBalances {
+  year: number;
+  userId: string;
+  balances: LeaveBalance[];
+}
+
+export type RegularizationType =
+  | "missed_punch"
+  | "late"
+  | "short_hours"
+  | "half_day"
+  | "wrong_status";
+
+/** An attendance regularization request. */
+export interface RegularizationRequest {
+  id: string;
+  userId: string;
+  userName: string | null;
+  day: string;
+  type: RegularizationType;
+  requestedCheckInAt: string | null;
+  requestedCheckOutAt: string | null;
+  requestedStatus: "present" | "half_day" | "on_leave" | null;
+  reason: string;
+  status: LeaveStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+}
+
+/** One member's live status on the who's-in board. */
+export interface WhosInMember {
+  userId: string;
+  name: string;
+  status: AttendanceStatus;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  workedMinutes: number;
+  isLate: boolean;
+}
+
+export interface WhosIn {
+  day: string;
+  members: WhosInMember[];
+}
+
+/** One member's monthly rollup in the team report. */
+export interface TeamSummaryRow {
+  userId: string;
+  name: string;
+  summary: AttendanceSummary["summary"];
+}
+
+export interface TeamSummary {
+  month: string;
+  members: TeamSummaryRow[];
+}
+
+/** An in-app notification. */
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  link: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
 /** GET /clients row (and /clients/:id). */
 export interface Client {
   id: string;
@@ -507,6 +870,11 @@ export interface Client {
   relationshipHealth?: RelationshipHealth | null;
   nextFollowUpAt?: string | null;
   internalNotes?: string | null;
+  /** Account manager / relationship owner. */
+  ownerId?: string | null;
+  /** Folded into GET /clients/:id. */
+  ownerName?: string | null;
+  tags?: ClientTag[];
   /** Present when the backend folds in a project rollup for this client. */
   projectCount?: number;
   /** Finance rollups folded in by GET /clients/:id. */

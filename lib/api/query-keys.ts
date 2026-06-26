@@ -2,11 +2,21 @@
 export const queryKeys = {
   me: ["me"] as const,
   agency: ["agency"] as const,
+  rolePermissions: ["agency", "roles"] as const,
+  customRoles: ["agency", "custom-roles"] as const,
   dashboard: (clientId?: string) => ["dashboard", clientId ?? "agency"] as const,
   usage: ["agency", "usage"] as const,
   clients: (filters?: Record<string, unknown>) =>
     ["clients", filters ?? {}] as const,
   client: (id: string) => ["clients", id] as const,
+  // CRM
+  contacts: (clientId: string) => ["crm", "contacts", clientId] as const,
+  clientNotes: (clientId: string) => ["crm", "notes", clientId] as const,
+  clientTags: (clientId: string) => ["crm", "client-tags", clientId] as const,
+  tags: ["crm", "tags"] as const,
+  pipeline: ["crm", "deals"] as const,
+  clientDeals: (clientId: string) => ["crm", "deals", clientId] as const,
+  followUps: ["crm", "follow-ups"] as const,
   posts: (clientId: string, filters?: Record<string, unknown>) =>
     ["clients", clientId, "posts", filters ?? {}] as const,
   post: (clientId: string, postId: string) =>
@@ -71,4 +81,25 @@ export const queryKeys = {
   sheets: (filters?: Record<string, unknown>) =>
     ["sheets", filters ?? {}] as const,
   sheet: (id: string) => ["sheets", id] as const,
+  // Attendance
+  attendancePolicy: ["attendance", "policy"] as const,
+  attendanceToday: ["attendance", "today"] as const,
+  attendanceCalendar: (month: string, userId?: string) =>
+    ["attendance", "calendar", month, userId ?? "me"] as const,
+  attendanceSummary: (month: string, userId?: string) =>
+    ["attendance", "summary", month, userId ?? "me"] as const,
+  holidays: (year: number) => ["attendance", "holidays", year] as const,
+  whosIn: ["attendance", "whos-in"] as const,
+  teamSummary: (month: string) => ["attendance", "team-summary", month] as const,
+  leaveTypes: ["attendance", "leave-types"] as const,
+  leaves: (scope: string, userId?: string) =>
+    ["attendance", "leaves", scope, userId ?? "me"] as const,
+  leaveBalances: (userId: string, year: number) =>
+    ["attendance", "leave-balances", userId, year] as const,
+  regularizations: (scope: string, userId?: string) =>
+    ["attendance", "regularizations", scope, userId ?? "me"] as const,
+  // Notifications
+  notifications: (unreadOnly: boolean) =>
+    ["notifications", unreadOnly ? "unread" : "all"] as const,
+  notificationsUnread: ["notifications", "unread-count"] as const,
 };

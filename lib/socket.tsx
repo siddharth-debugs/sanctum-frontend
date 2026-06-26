@@ -9,6 +9,7 @@ import type {
   ThreadUpdate,
   TypingEvent,
   ThreadReadEvent,
+  AppNotification,
 } from "@/lib/api/types";
 
 /**
@@ -22,6 +23,7 @@ export interface ServerToClientEvents {
   "thread:created": (thread: ThreadSummary) => void;
   typing: (payload: TypingEvent) => void;
   "thread:read": (payload: ThreadReadEvent) => void;
+  "notification:new": (notification: AppNotification) => void;
 }
 
 export interface ClientToServerEvents {

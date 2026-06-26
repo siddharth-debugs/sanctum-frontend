@@ -30,6 +30,7 @@ import { useUsage } from "@/hooks/use-usage";
 import { useOpenClientPortal } from "@/hooks/use-portal-tokens";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { formatDateTime } from "@/lib/utils";
+import { useCan, useSession } from "../../../session-context";
 import type { Post } from "@/lib/api/types";
 
 const CURRENT_MONTH = "2026-06";
@@ -81,6 +82,10 @@ export default function ClientCalendarPage({
   const generateMonth = useGenerateMonth(clientId);
   const { data: usage } = useUsage();
   const openPortal = useOpenClientPortal(clientId);
+  const { canManage } = useCan();
+  const session = useSession();
+  const isPrivileged =
+    session.user.role === "owner" || session.user.role === "admin";
 
   const ai = usage?.usage?.ai;
   const aiIndicator = ai
@@ -179,33 +184,39 @@ export default function ClientCalendarPage({
         description="Plan the month, send posts for approval, and share a branded read-only portal."
         actions={
           <>
-            <div className="flex flex-col items-stretch gap-1">
+            {canManage("ai") && (
+              <div className="flex flex-col items-stretch gap-1">
+                <Button
+                  variant="accent"
+                  disabled={generateMonth.isPending}
+                  onClick={() => generateMonth.mutate({ month: CURRENT_MONTH })}
+                >
+                  <Sparkles className="size-4" />
+                  {generateMonth.isPending
+                    ? "Generating…"
+                    : "Generate month with AI"}
+                </Button>
+                {aiIndicator && (
+                  <span className="text-center text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {aiIndicator}
+                  </span>
+                )}
+              </div>
+            )}
+            {isPrivileged && (
               <Button
-                variant="accent"
-                disabled={generateMonth.isPending}
-                onClick={() => generateMonth.mutate({ month: CURRENT_MONTH })}
+                variant="outline"
+                disabled={openPortal.isPending}
+                onClick={() => openPortal.mutate()}
               >
-                <Sparkles className="size-4" />
-                {generateMonth.isPending
-                  ? "Generating…"
-                  : "Generate month with AI"}
+                <ExternalLink className="size-4" /> Portal
               </Button>
-              {aiIndicator && (
-                <span className="text-center text-[11px] font-medium tabular-nums text-muted-foreground">
-                  {aiIndicator}
-                </span>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              disabled={openPortal.isPending}
-              onClick={() => openPortal.mutate()}
-            >
-              <ExternalLink className="size-4" /> Portal
-            </Button>
-            <Button onClick={() => formSheet.onOpen(null)}>
-              <Plus className="size-4" /> New post
-            </Button>
+            )}
+            {canManage("clients") && (
+              <Button onClick={() => formSheet.onOpen(null)}>
+                <Plus className="size-4" /> New post
+              </Button>
+            )}
           </>
         }
       />
@@ -234,9 +245,11 @@ export default function ClientCalendarPage({
             emptyTitle="No posts yet"
             emptyDescription="Create a post or generate a month of drafts with AI."
             emptyAction={
-              <Button onClick={() => formSheet.onOpen(null)}>
-                <Plus className="size-4" /> New post
-              </Button>
+              canManage("clients") ? (
+                <Button onClick={() => formSheet.onOpen(null)}>
+                  <Plus className="size-4" /> New post
+                </Button>
+              ) : undefined
             }
           />
         </TabsContent>

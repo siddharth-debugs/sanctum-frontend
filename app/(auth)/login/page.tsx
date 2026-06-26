@@ -29,15 +29,14 @@ export default function LoginPage() {
   return (
     <GlassCard strong className="w-full max-w-md p-8">
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
-        <div
-          className="grid size-12 place-items-center rounded-lg font-display text-2xl font-semibold text-primary-foreground"
-          style={{
-            background:
-              "linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--accent) 70%,var(--primary)))",
-          }}
-        >
-          S
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/sanctum-logo.png?v=2"
+          alt="Sanctum"
+          width={48}
+          height={48}
+          className="size-12 object-contain"
+        />
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">
             Welcome back

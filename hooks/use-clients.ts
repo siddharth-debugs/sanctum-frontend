@@ -26,30 +26,39 @@ export function useClient(clientId: string) {
   });
 }
 
-/** Request body for POST /clients and PATCH /clients/:id. */
+/**
+ * Request body for POST /clients and PATCH /clients/:id. Optional fields accept
+ * `null` so the edit form can CLEAR them (the backend writes null when present).
+ */
 export interface ClientInput {
   name: string;
-  contactEmail?: string;
-  brandColor?: string;
-  logoUrl?: string;
+  contactEmail?: string | null;
+  brandColor?: string | null;
+  logoUrl?: string | null;
   handles?: Record<string, string>;
   // CRM: company profile
-  industry?: string;
-  website?: string;
-  phoneCc?: string;
-  phone?: string;
-  clientSource?: ClientSource;
+  industry?: string | null;
+  website?: string | null;
+  phoneCc?: string | null;
+  phone?: string | null;
+  clientSource?: ClientSource | null;
   // CRM: billing
-  gstNumber?: string;
-  paymentTermsDays?: number;
-  billingAddress?: string;
-  billingState?: string;
-  billingCity?: string;
-  billingPincode?: string;
+  gstNumber?: string | null;
+  paymentTermsDays?: number | null;
+  billingAddress?: string | null;
+  billingState?: string | null;
+  billingCity?: string | null;
+  billingPincode?: string | null;
   // CRM: relationship
   relationshipHealth?: RelationshipHealth;
-  nextFollowUpAt?: string;
-  internalNotes?: string;
+  nextFollowUpAt?: string | null;
+  internalNotes?: string | null;
+  /** Account manager / relationship owner (null clears). */
+  ownerId?: string | null;
+  /** 'Active client' toggle — maps to status on the backend. */
+  isActive?: boolean;
+  /** Post statuses the client portal exposes. */
+  portalVisibleStatuses?: string[];
   status?: Client["status"];
 }
 

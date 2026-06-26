@@ -31,6 +31,32 @@ export function openAiChat() {
   listeners.forEach((l) => l());
 }
 
+const PINE_BRASS_GRADIENT_HEADER =
+  "linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--accent) 75%,var(--primary)))";
+
+/**
+ * Header trigger for the AI Assistant. Lives in the app-shell top bar (next to
+ * the notification bell) instead of a floating button that overlaps page
+ * actions. Opens the same global panel via `openAiChat()`.
+ */
+export function AiChatButton({ className }: { className?: string }) {
+  return (
+    <button
+      type="button"
+      aria-label="Open AI Assistant"
+      title="AI Assistant"
+      onClick={() => openAiChat()}
+      className={cn(
+        "grid size-9 place-items-center rounded-md text-primary-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95",
+        className,
+      )}
+      style={{ background: PINE_BRASS_GRADIENT_HEADER }}
+    >
+      <Sparkles className="size-4" />
+    </button>
+  );
+}
+
 const PINE_BRASS_GRADIENT =
   "linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--accent) 75%,var(--primary)))";
 
@@ -134,18 +160,7 @@ export function AiChatLauncher() {
 
   return (
     <div data-print-hide>
-      {/* Floating launcher button */}
-      {!open && (
-        <button
-          type="button"
-          aria-label="Open AI Assistant"
-          onClick={() => setOpen(true)}
-          className="group fixed bottom-5 right-5 z-50 grid size-14 place-items-center rounded-full text-primary-foreground shadow-[0_8px_24px_color-mix(in_srgb,var(--primary)_38%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95"
-          style={{ background: PINE_BRASS_GRADIENT }}
-        >
-          <Sparkles className="size-6 transition-transform group-hover:rotate-12" />
-        </button>
-      )}
+      {/* The trigger now lives in the app-shell header (see <AiChatButton />). */}
 
       {/* Mobile backdrop */}
       {open && isMobile && (

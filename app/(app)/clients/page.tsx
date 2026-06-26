@@ -21,7 +21,6 @@ import {
 } from "@/components/app/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { StatusBadge } from "@/components/app/status-badge";
 import { HealthBadge } from "@/components/app/health-badge";
 import {
   DropdownMenu,
@@ -32,12 +31,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ClientFormSheet } from "@/components/app/client-form-sheet";
 import { ClientViewModal } from "@/components/app/client-view-modal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PipelineBoard } from "@/components/app/crm/pipeline-board";
+import { FollowUpsCard } from "@/components/app/crm/follow-ups-card";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-clients";
 import { api, ApiError } from "@/lib/api/client";
 import { useDisclosure } from "@/hooks/use-disclosure";
-import { initials, formatDate } from "@/lib/utils";
+import { initials, formatDate, cn } from "@/lib/utils";
+import { useSession } from "../session-context";
 import type { Client } from "@/lib/api/types";
 
 /** Social handles (excluding the synthetic `sector` key the backend folds in). */
@@ -57,6 +60,10 @@ const STATUS_FACET: DataTableFacet = {
 
 export default function ClientsPage() {
   const { data, isLoading, error } = useClients();
+  const session = useSession();
+  // Create/edit/archive are owner/admin-only on the backend — gate the UI to match.
+  const canManage =
+    session.user.role === "owner" || session.user.role === "admin";
   const qc = useQueryClient();
   const formSheet = useDisclosure<Client | null>();
   const viewModal = useDisclosure<Client>();
@@ -169,9 +176,16 @@ export default function ClientsPage() {
         ),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            <StatusBadge
-              status={row.original.status === "active" ? "posted" : "draft"}
-            />
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-xs font-semibold",
+                row.original.status === "active"
+                  ? "text-success bg-[color-mix(in_srgb,var(--success)_15%,transparent)]"
+                  : "text-muted-foreground bg-muted",
+              )}
+            >
+              {row.original.status === "active" ? "Active" : "Archived"}
+            </span>
             <HealthBadge health={row.original.relationshipHealth} />
           </div>
         ),
@@ -213,17 +227,23 @@ export default function ClientsPage() {
                       <CalendarDays className="mr-2 size-4" /> Calendar
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => formSheet.onOpen(c)}>
-                    <Pencil className="mr-2 size-4" /> Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    disabled={c.status === "archived"}
-                    onClick={() => archive(c)}
-                  >
-                    <Archive className="mr-2 size-4" /> Archive
-                  </DropdownMenuItem>
+                  {canManage && (
+                    <DropdownMenuItem onClick={() => formSheet.onOpen(c)}>
+                      <Pencil className="mr-2 size-4" /> Edit
+                    </DropdownMenuItem>
+                  )}
+                  {canManage && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        disabled={c.status === "archived"}
+                        onClick={() => archive(c)}
+                      >
+                        <Archive className="mr-2 size-4" /> Archive
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -231,7 +251,7 @@ export default function ClientsPage() {
         },
       },
     ],
-    [formSheet, viewModal, archive],
+    [formSheet, viewModal, archive, canManage],
   );
 
   return (
@@ -245,31 +265,57 @@ export default function ClientsPage() {
         title="Clients"
         description="Manage the brands you produce content for. Each gets a branded, read-only approval portal."
         actions={
-          <Button onClick={() => formSheet.onOpen(null)}>
-            <Plus className="size-4" /> New client
-          </Button>
+          canManage ? (
+            <Button onClick={() => formSheet.onOpen(null)}>
+              <Plus className="size-4" /> New client
+            </Button>
+          ) : undefined
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={data ?? []}
-        isLoading={isLoading}
-        error={error ? "Couldn't load clients. Please retry." : null}
-        searchKey="name"
-        searchPlaceholder="Search clients…"
-        facets={[STATUS_FACET]}
-        getRowId={(c) => c.id}
-        onRowClick={(c) => viewModal.onOpen(c)}
-        emptyIcon={<Users className="size-8" />}
-        emptyTitle="No clients yet"
-        emptyDescription="Add your first client to start planning their content calendar."
-        emptyAction={
-          <Button onClick={() => formSheet.onOpen(null)}>
-            <Plus className="size-4" /> New client
-          </Button>
-        }
-      />
+      <Tabs defaultValue="directory">
+        <TabsList>
+          <TabsTrigger value="directory">Directory</TabsTrigger>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="followups">Follow-ups</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="directory" className="mt-5">
+          <DataTable
+            columns={columns}
+            data={data ?? []}
+            isLoading={isLoading}
+            error={error ? "Couldn't load clients. Please retry." : null}
+            searchKey="name"
+            searchPlaceholder="Search clients…"
+            facets={[STATUS_FACET]}
+            getRowId={(c) => c.id}
+            onRowClick={(c) => viewModal.onOpen(c)}
+            emptyIcon={<Users className="size-8" />}
+            emptyTitle="No clients yet"
+            emptyDescription={
+              canManage
+                ? "Add your first client to start planning their content calendar."
+                : "You haven't been assigned to any clients yet."
+            }
+            emptyAction={
+              canManage ? (
+                <Button onClick={() => formSheet.onOpen(null)}>
+                  <Plus className="size-4" /> New client
+                </Button>
+              ) : undefined
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="pipeline" className="mt-5">
+          <PipelineBoard />
+        </TabsContent>
+
+        <TabsContent value="followups" className="mt-5">
+          <FollowUpsCard />
+        </TabsContent>
+      </Tabs>
 
       <ClientFormSheet
         open={formSheet.open}
@@ -280,10 +326,14 @@ export default function ClientsPage() {
         open={viewModal.open}
         onOpenChange={viewModal.setOpen}
         client={viewModal.data}
-        onEdit={(c) => {
-          viewModal.onClose();
-          formSheet.onOpen(c);
-        }}
+        onEdit={
+          canManage
+            ? (c) => {
+                viewModal.onClose();
+                formSheet.onOpen(c);
+              }
+            : undefined
+        }
       />
     </div>
   );

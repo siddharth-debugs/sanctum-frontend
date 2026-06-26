@@ -8,6 +8,7 @@ import type {
   TeamMemberDetail,
   TimeLog,
   Role,
+  PermissionMap,
 } from "@/lib/api/types";
 
 export interface TeamFilters extends Record<string, string | boolean | undefined> {
@@ -77,10 +78,12 @@ export function useInviteMember() {
   });
 }
 
-/** PATCH /team/:id body — profile / role / status updates. */
+/** PATCH /team/:id body — profile / role / status / permission updates. */
 export interface UpdateMemberInput {
   fullName?: string;
   role?: Role;
+  /** Assign a custom role (sets the user's tier); null clears to built-in. */
+  customRoleId?: string | null;
   status?: TeamMember["status"];
   designation?: string;
   department?: string;
@@ -90,6 +93,8 @@ export interface UpdateMemberInput {
   weeklyCapacityHrs?: number;
   /** Either a string[] or a comma-separated CSV — backend accepts both. */
   skills?: string[] | string;
+  /** Full or partial module permission map; merged server-side. */
+  permissions?: Partial<PermissionMap>;
 }
 
 export function useUpdateMember(memberId: string) {

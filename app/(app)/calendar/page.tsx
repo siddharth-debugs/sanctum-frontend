@@ -21,13 +21,14 @@ import { usePosts } from "@/hooks/use-posts";
 export default function CrossClientCalendarPage() {
   const { data: clients } = useClients();
   const activeClients = (clients ?? []).filter((c) => c.status === "active");
-  const [clientId, setClientId] = React.useState<string | undefined>();
+  // Always a string so the Select stays controlled (empty = nothing picked yet).
+  const [clientId, setClientId] = React.useState("");
 
   React.useEffect(() => {
     if (!clientId && activeClients[0]) setClientId(activeClients[0].id);
   }, [activeClients, clientId]);
 
-  const { data: posts } = usePosts(clientId ?? "");
+  const { data: posts } = usePosts(clientId);
 
   return (
     <div className="space-y-6">
