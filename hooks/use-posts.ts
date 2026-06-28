@@ -3,7 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import type { Post, PostStatus, PostType } from "@/lib/api/types";
+import type {
+  Post,
+  PostApproval,
+  PostComment,
+  PostStatus,
+  PostType,
+} from "@/lib/api/types";
 
 /** GET /clients/:clientId/posts?month=YYYY-MM&status=a,b&type=reel */
 export function usePosts(
@@ -79,5 +85,41 @@ export function useTransitionPost(clientId: string, postId: string) {
       }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["clients", clientId, "posts"] }),
+  });
+}
+
+/** GET .../comments — client + staff comments on a post. */
+export function usePostComments(clientId: string, postId?: string) {
+  return useQuery({
+    queryKey: queryKeys.postComments(clientId, postId ?? ""),
+    queryFn: () =>
+      api<PostComment[]>(`/clients/${clientId}/posts/${postId}/comments`),
+    enabled: !!clientId && !!postId,
+  });
+}
+
+/** GET .../approvals — client approval / change-request history on a post. */
+export function usePostApprovals(clientId: string, postId?: string) {
+  return useQuery({
+    queryKey: queryKeys.postApprovals(clientId, postId ?? ""),
+    queryFn: () =>
+      api<PostApproval[]>(`/clients/${clientId}/posts/${postId}/approvals`),
+    enabled: !!clientId && !!postId,
+  });
+}
+
+/** POST .../comments — staff reply on a post. */
+export function useAddPostComment(clientId: string, postId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) =>
+      api<PostComment>(`/clients/${clientId}/posts/${postId}/comments`, {
+        method: "POST",
+        body: { body },
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: queryKeys.postComments(clientId, postId),
+      }),
   });
 }

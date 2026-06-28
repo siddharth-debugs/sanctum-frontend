@@ -13,6 +13,8 @@ import { useSocket } from "@/lib/socket";
 import { useSession } from "@/app/(app)/session-context";
 import type {
   Message,
+  MessageAttachment,
+  MessageDeletedEvent,
   Thread,
   ThreadStatus,
   ThreadSummary,
@@ -69,6 +71,8 @@ function applyThreadUpdate(
 export interface ThreadFilters extends Record<string, unknown> {
   status?: ThreadStatus;
   search?: string;
+  /** Scope the list to a single client (server-side filter). */
+  clientId?: string;
 }
 
 export function useThreads(filters?: ThreadFilters) {
@@ -79,6 +83,7 @@ export function useThreads(filters?: ThreadFilters) {
   const queryParams: Record<string, string> = {};
   if (filters?.status) queryParams.status = filters.status;
   if (filters?.search) queryParams.search = filters.search;
+  if (filters?.clientId) queryParams.clientId = filters.clientId;
 
   const query = useQuery({
     queryKey: queryKeys.threads(filters),
@@ -227,9 +232,38 @@ export function useThreadMessages(threadId: string | null) {
       markRead();
     };
 
+    // An edit (body / editedAt) patches the cached message in place.
+    const onUpdated = (message: Message) => {
+      if (message.threadId !== threadId) return;
+      qc.setQueryData<Message[]>(
+        queryKeys.threadMessages(threadId),
+        (prev) => {
+          const list = prev ?? [];
+          const i = list.findIndex((m) => m.id === message.id);
+          if (i === -1) return list;
+          const next = [...list];
+          next[i] = { ...next[i], ...message, pending: false };
+          return next;
+        },
+      );
+    };
+
+    // A delete drops the message from the cache.
+    const onDeleted = (payload: MessageDeletedEvent) => {
+      if (payload.threadId !== threadId) return;
+      qc.setQueryData<Message[]>(
+        queryKeys.threadMessages(threadId),
+        (prev) => (prev ?? []).filter((m) => m.id !== payload.messageId),
+      );
+    };
+
     socket.on("message:new", onNew);
+    socket.on("message:updated", onUpdated);
+    socket.on("message:deleted", onDeleted);
     return () => {
       socket.off("message:new", onNew);
+      socket.off("message:updated", onUpdated);
+      socket.off("message:deleted", onDeleted);
     };
   }, [threadId, socket, qc, markRead]);
 
@@ -250,7 +284,11 @@ export function useSendMessage(threadId: string | null) {
   const session = useSession();
 
   const insertOptimistic = React.useCallback(
-    (body: string, clientMsgId: string): Message => {
+    (
+      body: string,
+      clientMsgId: string,
+      attachments?: MessageAttachment[],
+    ): Message => {
       const optimistic: Message = {
         id: clientMsgId,
         threadId: threadId ?? "",
@@ -258,6 +296,7 @@ export function useSendMessage(threadId: string | null) {
         senderName: session.user.fullName ?? session.user.email,
         senderAvatarUrl: null,
         body,
+        attachments: attachments ?? [],
         createdAt: new Date().toISOString(),
         clientMsgId,
         pending: true,
@@ -349,6 +388,30 @@ export function useSendMessage(threadId: string | null) {
     ],
   );
 
+  // Attachments always go via REST: the server persists them and broadcasts
+  // 'message:new' to everyone (including us), which reconciles the optimistic
+  // bubble. A body is optional when ≥1 attachment is present.
+  const sendWithAttachments = React.useCallback(
+    async (raw: string, attachments: MessageAttachment[]) => {
+      const body = raw.trim();
+      if (!threadId) return;
+      if (!body && attachments.length === 0) return;
+      const clientMsgId = makeClientMsgId();
+      insertOptimistic(body, clientMsgId, attachments);
+      try {
+        const message = await api<Message>(
+          `/messages/threads/${threadId}/messages`,
+          { method: "POST", body: { body, attachments } },
+        );
+        reconcile({ ...message, clientMsgId }, clientMsgId);
+      } catch {
+        markFailed(clientMsgId);
+        throw new Error("Failed to send attachment");
+      }
+    },
+    [threadId, insertOptimistic, reconcile, markFailed],
+  );
+
   // Debounced typing emitter.
   const typingTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -374,7 +437,55 @@ export function useSendMessage(threadId: string | null) {
     };
   }, []);
 
-  return { send, emitTyping };
+  return { send, sendWithAttachments, emitTyping };
+}
+
+// ---------------------------------------------------------------------------
+// useEditMessage / useDeleteMessage — mutate a single message (own messages;
+// delete also allowed for owner/admin on any). The server broadcasts
+// 'message:updated' / 'message:deleted'; we also patch the cache locally so the
+// author sees the change instantly without waiting for the echo.
+// ---------------------------------------------------------------------------
+
+export function useEditMessage(threadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, body }: { messageId: string; body: string }) =>
+      api<Message>(`/messages/threads/${threadId}/messages/${messageId}`, {
+        method: "PATCH",
+        body: { body },
+      }),
+    onSuccess: (message) => {
+      qc.setQueryData<Message[]>(
+        queryKeys.threadMessages(threadId),
+        (prev) => {
+          const list = prev ?? [];
+          const i = list.findIndex((m) => m.id === message.id);
+          if (i === -1) return list;
+          const next = [...list];
+          next[i] = { ...next[i], ...message, pending: false };
+          return next;
+        },
+      );
+    },
+  });
+}
+
+export function useDeleteMessage(threadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) =>
+      api<{ deleted: true }>(
+        `/messages/threads/${threadId}/messages/${messageId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (_data, messageId) => {
+      qc.setQueryData<Message[]>(
+        queryKeys.threadMessages(threadId),
+        (prev) => (prev ?? []).filter((m) => m.id !== messageId),
+      );
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +570,10 @@ export function useCreateThread() {
 export interface UpdateThreadInput {
   subject?: string;
   status?: ThreadStatus;
+  /** Re-link or clear the client (null clears it; clearing also clears project). */
+  clientId?: string | null;
+  /** Re-link or clear the project (null clears it). */
+  projectId?: string | null;
   addParticipantIds?: string[];
   removeParticipantIds?: string[];
 }

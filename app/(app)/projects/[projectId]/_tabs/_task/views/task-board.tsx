@@ -23,6 +23,7 @@ import {
   buildGroups,
   groupableDrag,
   NONE_GROUP_KEY,
+  taskAssigneeIds,
   type TaskGroupColumn,
   type TaskViewProps,
 } from "./task-grouping";
@@ -91,19 +92,52 @@ export function TaskBoard({
       // No-op if the card is already in the target column.
       if (sameColumn(current, group, rawKey)) return;
 
-      // Optimistic move across ALL cached list variants for this project.
-      const prefix = ["projects", projectId, "tasks"] as const;
-      const snapshots = qc.getQueriesData<ProjectTask[]>({ queryKey: prefix });
+      // For assignee drags, carry the optimistic `assignees`/`assigneeName`
+      // delta (not the input's `assigneeIds`, which isn't a ProjectTask field)
+      // so the moved card renders the right stack before the refetch.
+      let optimistic: Partial<ProjectTask> = input as Partial<ProjectTask>;
+      let assigneeNames: Record<string, string> | undefined;
+      if (group === "assignee") {
+        const targetId = rawKey === NONE_GROUP_KEY ? null : rawKey;
+        const member = members.find((m) => m.userId === targetId);
+        assigneeNames = member
+          ? { [member.userId]: member.userName }
+          : undefined;
+        optimistic = {
+          assigneeId: targetId,
+          assigneeName: member?.userName ?? null,
+          assignees:
+            targetId && member
+              ? [{ userId: targetId, name: member.userName }]
+              : [],
+        };
+      }
+
+      // Optimistic move across the cached task-LIST variants only. The
+      // ["projects", id, "tasks"] prefix is ALSO shared by single-task detail,
+      // subtask, comment and dependency caches (non-array shapes); a task list
+      // key is exactly length 4 (filters object at [3]). Guard with isArray too.
+      const snapshots = qc.getQueriesData<ProjectTask[]>({
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return (
+            k[0] === "projects" &&
+            k[1] === projectId &&
+            k[2] === "tasks" &&
+            k.length === 4
+          );
+        },
+      });
       for (const [key, list] of snapshots) {
-        if (!list) continue;
+        if (!Array.isArray(list)) continue;
         qc.setQueryData<ProjectTask[]>(
           key,
-          list.map((t) => (t.id === taskId ? { ...t, ...input } : t)),
+          list.map((t) => (t.id === taskId ? { ...t, ...optimistic } : t)),
         );
       }
 
       updateTask.mutate(
-        { taskId, input },
+        { taskId, input, assigneeNames },
         {
           onError: (err) => {
             for (const [key, data] of snapshots) qc.setQueryData(key, data);
@@ -114,7 +148,7 @@ export function TaskBoard({
         },
       );
     },
-    [tasks, group, projectId, qc, updateTask, dragEnabled],
+    [tasks, group, projectId, qc, updateTask, dragEnabled, members],
   );
 
   return (
@@ -267,8 +301,13 @@ function sameColumn(
   switch (group) {
     case "status":
       return task.status === key;
-    case "assignee":
-      return (task.assigneeId ?? NONE_GROUP_KEY) === rawKey;
+    case "assignee": {
+      // A no-op only when the target member is ALREADY the sole assignee (or
+      // both the task and the target are "unassigned"). Dragging a multi-assignee
+      // card onto one of its members re-assigns it solely to that member.
+      const ids = taskAssigneeIds(task);
+      return key === null ? ids.length === 0 : ids.length === 1 && ids[0] === key;
+    }
     case "priority":
       return task.priority === key;
     case "milestone":
@@ -284,7 +323,7 @@ function columnPatch(
   rawKey: string,
 ): Partial<{
   status: ProjectTaskStatus;
-  assigneeId: string | null;
+  assigneeIds: string[] | null;
   priority: ProjectTaskPriority;
   milestoneId: string | null;
 }> | null {
@@ -293,7 +332,8 @@ function columnPatch(
     case "status":
       return key ? { status: key as ProjectTaskStatus } : null;
     case "assignee":
-      return { assigneeId: key };
+      // Dragging assigns solely to the target member (or clears via Unassigned).
+      return { assigneeIds: key ? [key] : [] };
     case "priority":
       return { priority: (key ?? "none") as ProjectTaskPriority };
     case "milestone":

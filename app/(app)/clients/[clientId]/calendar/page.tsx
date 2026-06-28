@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   Plus,
   Sparkles,
   CalendarDays,
   LayoutList,
-  ExternalLink,
+  Share2,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -27,7 +28,7 @@ import { usePosts } from "@/hooks/use-posts";
 import { useClient } from "@/hooks/use-clients";
 import { useGenerateMonth } from "@/hooks/use-ai";
 import { useUsage } from "@/hooks/use-usage";
-import { useOpenClientPortal } from "@/hooks/use-portal-tokens";
+import { PortalShareDialog } from "@/components/app/portal-share-dialog";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { formatDateTime } from "@/lib/utils";
 import { useCan, useSession } from "../../../session-context";
@@ -81,7 +82,7 @@ export default function ClientCalendarPage({
   const { data: posts, isLoading, error: postsError } = usePosts(clientId);
   const generateMonth = useGenerateMonth(clientId);
   const { data: usage } = useUsage();
-  const openPortal = useOpenClientPortal(clientId);
+  const shareDialog = useDisclosure();
   const { canManage } = useCan();
   const session = useSession();
   const isPrivileged =
@@ -95,6 +96,31 @@ export default function ClientCalendarPage({
     : null;
   const formSheet = useDisclosure<Post | null>();
   const viewModal = useDisclosure<Post>();
+  // Prefill "Scheduled for" when adding a post from a calendar day cell.
+  const [addDay, setAddDay] = React.useState<Date | undefined>(undefined);
+
+  // Deep link: /clients/:id/calendar?post=<id> (from a notification) opens that
+  // post's detail + thread, then cleans the param so a refresh won't reopen.
+  // Reactive to the query param so it fires even when we're ALREADY on this page
+  // and a notification soft-navigates to a new ?post= value.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const handledPost = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const postId = searchParams.get("post");
+    // Reset when the param is gone so the SAME notification can re-open later.
+    if (!postId) {
+      handledPost.current = null;
+      return;
+    }
+    if (!posts) return; // wait for posts to load, then handle once.
+    if (handledPost.current === postId) return; // already opened this one.
+    handledPost.current = postId;
+    const target = posts.find((p) => p.id === postId);
+    if (target) viewModal.onOpen(target);
+    // Best-effort: clear the param so a refresh won't reopen.
+    router.replace(`/clients/${clientId}/calendar`, { scroll: false });
+  }, [posts, searchParams, clientId, viewModal, router]);
 
   const columns = React.useMemo<ColumnDef<Post>[]>(
     () => [
@@ -183,7 +209,9 @@ export default function ClientCalendarPage({
         title={`${client?.name ?? "Client"} — June`}
         description="Plan the month, send posts for approval, and share a branded read-only portal."
         actions={
-          <>
+          // items-start keeps every button top-aligned; the AI-usage caption
+          // hangs below "Generate" without nudging the others out of line.
+          <div className="flex flex-wrap items-start gap-2">
             {canManage("ai") && (
               <div className="flex flex-col items-stretch gap-1">
                 <Button
@@ -204,20 +232,21 @@ export default function ClientCalendarPage({
               </div>
             )}
             {isPrivileged && (
-              <Button
-                variant="outline"
-                disabled={openPortal.isPending}
-                onClick={() => openPortal.mutate()}
-              >
-                <ExternalLink className="size-4" /> Portal
+              <Button variant="outline" onClick={() => shareDialog.onOpen()}>
+                <Share2 className="size-4" /> Share portal
               </Button>
             )}
             {canManage("clients") && (
-              <Button onClick={() => formSheet.onOpen(null)}>
+              <Button
+                onClick={() => {
+                  setAddDay(undefined);
+                  formSheet.onOpen(null);
+                }}
+              >
                 <Plus className="size-4" /> New post
               </Button>
             )}
-          </>
+          </div>
         }
       />
 
@@ -246,7 +275,12 @@ export default function ClientCalendarPage({
             emptyDescription="Create a post or generate a month of drafts with AI."
             emptyAction={
               canManage("clients") ? (
-                <Button onClick={() => formSheet.onOpen(null)}>
+                <Button
+                  onClick={() => {
+                    setAddDay(undefined);
+                    formSheet.onOpen(null);
+                  }}
+                >
                   <Plus className="size-4" /> New post
                 </Button>
               ) : undefined
@@ -255,8 +289,20 @@ export default function ClientCalendarPage({
         </TabsContent>
         <TabsContent value="calendar" className="mt-4">
           <ContentCalendar
+            clientId={clientId}
             posts={posts ?? []}
             onPostClick={(p) => viewModal.onOpen(p)}
+            onAddPost={
+              canManage("clients")
+                ? (day) => {
+                    // Default new posts to 9:00 AM on the chosen day.
+                    const at = new Date(day);
+                    at.setHours(9, 0, 0, 0);
+                    setAddDay(at);
+                    formSheet.onOpen(null);
+                  }
+                : undefined
+            }
           />
         </TabsContent>
       </Tabs>
@@ -266,6 +312,7 @@ export default function ClientCalendarPage({
         onOpenChange={formSheet.setOpen}
         clientId={clientId}
         post={formSheet.data}
+        initialScheduledAt={addDay}
       />
       <PostViewModal
         open={viewModal.open}
@@ -275,6 +322,12 @@ export default function ClientCalendarPage({
           viewModal.onClose();
           formSheet.onOpen(p);
         }}
+      />
+      <PortalShareDialog
+        open={shareDialog.open}
+        onOpenChange={shareDialog.setOpen}
+        clientId={clientId}
+        clientName={client?.name ?? "this client"}
       />
     </div>
   );

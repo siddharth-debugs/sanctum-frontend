@@ -18,11 +18,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AssigneeAvatar,
+  AssigneeStack,
   DueChip,
   LabelChip,
   PriorityIcon,
   StatusBadge,
+  taskAssigneePeople,
 } from "@/components/app/tasks";
 import {
   formatEstimate,
@@ -290,13 +291,20 @@ function Row({
         </span>
       </TableCell>
 
-      {/* Assignee. */}
+      {/* Assignee(s). */}
       <TableCell className="hidden md:table-cell">
-        {task.assigneeName ? (
-          <AssigneeAvatar name={task.assigneeName} size="sm" showName />
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
+        {(() => {
+          const people = taskAssigneePeople(task);
+          return people.length > 0 ? (
+            <AssigneeStack
+              assignees={people}
+              size="sm"
+              showName={people.length === 1}
+            />
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          );
+        })()}
       </TableCell>
 
       {/* Due. */}

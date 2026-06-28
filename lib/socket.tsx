@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
-import { env } from "@/lib/env";
+import { apiBaseUrl } from "@/lib/env";
 import type {
   Message,
+  MessageDeletedEvent,
   ThreadSummary,
   ThreadUpdate,
   TypingEvent,
@@ -19,6 +20,8 @@ import type {
  */
 export interface ServerToClientEvents {
   "message:new": (message: Message) => void;
+  "message:updated": (message: Message) => void;
+  "message:deleted": (payload: MessageDeletedEvent) => void;
   "thread:updated": (thread: ThreadUpdate & Partial<ThreadSummary>) => void;
   "thread:created": (thread: ThreadSummary) => void;
   typing: (payload: TypingEvent) => void;
@@ -53,10 +56,9 @@ export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
  */
 function resolveSocketOrigin(): string {
   try {
-    const url = new URL(env.NEXT_PUBLIC_API_URL);
-    return url.origin;
+    return new URL(apiBaseUrl()).origin;
   } catch {
-    return env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, "");
+    return apiBaseUrl().replace(/\/api\/v1\/?$/, "");
   }
 }
 

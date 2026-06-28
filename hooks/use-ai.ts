@@ -109,17 +109,29 @@ export interface AiChatInput {
   messages: AiMessage[];
   /** Optional project to ground the answer. */
   projectId?: string;
+  /** Optional client to ground the answer. */
+  clientId?: string;
+}
+
+/**
+ * POST /ai/chat response. Extends the shared shape with an optional `source`
+ * flag (defined locally so we don't touch lib/api/types.ts) so the chat UI can
+ * surface a gentle template-fallback note when no API key is configured.
+ */
+export interface AiChatResult extends AiChatResponse {
+  source?: AiSource;
 }
 
 /** POST /ai/chat → the assistant's markdown reply. */
 export function useAiChat() {
   return useMutation({
     mutationFn: (input: AiChatInput) =>
-      api<AiChatResponse>("/ai/chat", {
+      api<AiChatResult>("/ai/chat", {
         method: "POST",
         body: {
           messages: input.messages,
           projectId: input.projectId || undefined,
+          clientId: input.clientId || undefined,
         },
       }),
   });
@@ -168,5 +180,163 @@ export function useGenerateBreakdown() {
     },
     onError: (err) =>
       toast.error(aiErrorMessage(err, "Couldn't generate the breakdown.")),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Social-content AI helpers — captions, hashtags, content ideas, repurpose.
+// Types are defined LOCALLY here (we intentionally do NOT touch lib/api/types.ts).
+// Each backend endpoint degrades to deterministic templates when no API key is
+// configured, returning `source: "fallback"` so the UI can surface a gentle
+// "running offline templates" note instead of an error.
+// ---------------------------------------------------------------------------
+
+export type AiSource = "gemini" | "fallback";
+
+export interface CaptionsInput {
+  /** A brief/topic, or an existing caption when `rewrite` is true. */
+  brief: string;
+  platform: string;
+  tone?: string;
+  rewrite?: boolean;
+  clientId?: string;
+  variations?: number;
+}
+
+export interface CaptionsResult {
+  variations: string[];
+  source: AiSource;
+}
+
+/** POST /ai/captions → 3-5 caption variations. */
+export function useGenerateCaptions() {
+  return useMutation({
+    mutationFn: (input: CaptionsInput) =>
+      api<CaptionsResult>("/ai/captions", {
+        method: "POST",
+        body: {
+          brief: input.brief,
+          platform: input.platform,
+          tone: input.tone || undefined,
+          rewrite: input.rewrite ?? false,
+          clientId: input.clientId || undefined,
+          variations: input.variations,
+        },
+      }),
+    onError: (err) =>
+      toast.error(aiErrorMessage(err, "Couldn't generate captions.")),
+  });
+}
+
+export interface HashtagGroups {
+  broad: string[];
+  niche: string[];
+  branded: string[];
+}
+
+export interface HashtagsInput {
+  topic: string;
+  platform: string;
+  clientId?: string;
+}
+
+export interface HashtagsResult {
+  groups: HashtagGroups;
+  source: AiSource;
+}
+
+/** POST /ai/hashtags → grouped hashtag suggestions (broad / niche / branded). */
+export function useGenerateHashtags() {
+  return useMutation({
+    mutationFn: (input: HashtagsInput) =>
+      api<HashtagsResult>("/ai/hashtags", {
+        method: "POST",
+        body: {
+          topic: input.topic,
+          platform: input.platform,
+          clientId: input.clientId || undefined,
+        },
+      }),
+    onError: (err) =>
+      toast.error(aiErrorMessage(err, "Couldn't suggest hashtags.")),
+  });
+}
+
+export interface ContentIdea {
+  hook: string;
+  format: string;
+  rationale: string;
+}
+
+export interface ContentIdeasInput {
+  niche: string;
+  count?: number;
+  platform?: string;
+  audience?: string;
+  clientId?: string;
+}
+
+export interface ContentIdeasResult {
+  ideas: ContentIdea[];
+  source: AiSource;
+}
+
+/** POST /ai/content-ideas → a list of post ideas (hook + format + rationale). */
+export function useGenerateContentIdeas() {
+  return useMutation({
+    mutationFn: (input: ContentIdeasInput) =>
+      api<ContentIdeasResult>("/ai/content-ideas", {
+        method: "POST",
+        body: {
+          niche: input.niche,
+          count: input.count,
+          platform: input.platform || undefined,
+          audience: input.audience || undefined,
+          clientId: input.clientId || undefined,
+        },
+      }),
+    onError: (err) =>
+      toast.error(aiErrorMessage(err, "Couldn't brainstorm ideas.")),
+  });
+}
+
+export type RepurposeTarget =
+  | "instagram"
+  | "linkedin"
+  | "x_thread"
+  | "facebook"
+  | "tiktok"
+  | "youtube"
+  | "newsletter";
+
+export interface RepurposeInput {
+  content: string;
+  target: RepurposeTarget;
+  tone?: string;
+  clientId?: string;
+}
+
+export interface RepurposeResult {
+  /** Markdown-formatted adapted content. */
+  content: string;
+  targetLabel: string;
+  source: AiSource;
+}
+
+/** POST /ai/repurpose → content adapted for another platform. */
+export function useRepurposeContent() {
+  return useMutation({
+    mutationFn: (input: RepurposeInput) =>
+      api<RepurposeResult>("/ai/repurpose", {
+        method: "POST",
+        body: {
+          content: input.content,
+          target: input.target,
+          tone: input.tone || undefined,
+          clientId: input.clientId || undefined,
+        },
+      }),
+    onError: (err) =>
+      toast.error(aiErrorMessage(err, "Couldn't repurpose the content.")),
   });
 }

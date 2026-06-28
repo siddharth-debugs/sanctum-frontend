@@ -53,7 +53,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { InvoiceStatusBadge, ExpenseCategoryBadge } from "@/components/app/finance-badges";
+import { ExpenseCategoryBadge } from "@/components/app/finance-badges";
 import {
   DocumentCategoryBadge,
   DocumentThumb,
@@ -61,7 +61,6 @@ import {
 } from "@/components/app/document-badges";
 import { DocumentUploadDialog } from "@/components/app/document-upload-dialog";
 import { DocumentPreviewModal } from "@/components/app/document-preview-modal";
-import { GlassCard } from "@/components/app/glass-card";
 import { useClient, useUpdateClient } from "@/hooks/use-clients";
 import { useProjects } from "@/hooks/use-projects";
 import { useTeam } from "@/hooks/use-team";
@@ -76,10 +75,12 @@ import { ContactsPanel } from "@/components/app/crm/contacts-panel";
 import { ActivityPanel } from "@/components/app/crm/activity-panel";
 import { DealsPanel } from "@/components/app/crm/deals-panel";
 import { ClientTags } from "@/components/app/crm/client-tags";
+import { NewThreadSheet } from "@/components/app/new-thread-sheet";
+import { ThreadListItem } from "@/components/app/messages/thread-list-item";
 import { useSession } from "../../session-context";
-import { useInvoices } from "@/hooks/use-invoices";
 import { useExpenses } from "@/hooks/use-expenses";
 import { useDocuments } from "@/hooks/use-documents";
+import { useThreads } from "@/hooks/use-messages";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { api, ApiError } from "@/lib/api/client";
 import { initials, formatDate, formatBytes } from "@/lib/utils";
@@ -106,29 +107,6 @@ function InfoRow({
         {label}
       </span>
       <span className="text-right font-medium">{children}</span>
-    </div>
-  );
-}
-
-/** Generic "Coming soon" empty state for not-yet-built tabs. */
-function ComingSoon({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center">
-      <span className="grid size-12 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-primary">
-        {icon}
-      </span>
-      <div className="space-y-1">
-        <p className="font-display text-base font-semibold">{title}</p>
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
-      </div>
     </div>
   );
 }
@@ -207,141 +185,12 @@ function ClientProjectsTab({
   );
 }
 
-/** Mini P&L stat tile inside the Financials tab. */
-function PnlStat({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "success" | "destructive";
-}) {
-  return (
-    <GlassCard className="p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={
-          "mt-1 font-display text-xl font-semibold tabular-nums " +
-          (tone === "success"
-            ? "text-success"
-            : tone === "destructive"
-              ? "text-destructive"
-              : "")
-        }
-      >
-        {value}
-      </p>
-    </GlassCard>
-  );
-}
-
-/** Real Financials tab: this client's invoices, expenses, and a mini P&L. */
-function ClientFinancialsTab({
-  clientId,
-  outstanding,
-}: {
-  clientId: string;
-  /** Backend rollup (paise) — preferred for Outstanding. */
-  outstanding?: number;
-}) {
-  const router = useRouter();
-  const { data: invoices, isLoading: invLoading } = useInvoices({ clientId });
+/** Real Financials tab: this client's expenses. */
+function ClientFinancialsTab({ clientId }: { clientId: string }) {
   const { data: expenses, isLoading: expLoading } = useExpenses({ clientId });
-
-  // Mini P&L: total billed = sum of non-cancelled invoice totals; collected =
-  // sum of amountPaid; outstanding prefers the backend rollup, else summed dues.
-  const { totalBilled, collected, outstandingAmt } = React.useMemo(() => {
-    const rows = (invoices ?? []).filter((i) => i.status !== "cancelled");
-    const billed = rows.reduce((s, i) => s + i.total, 0);
-    const paid = rows.reduce((s, i) => s + i.amountPaid, 0);
-    const due =
-      outstanding != null
-        ? outstanding
-        : rows.reduce((s, i) => s + i.amountDue, 0);
-    return { totalBilled: billed, collected: paid, outstandingAmt: due };
-  }, [invoices, outstanding]);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button asChild>
-          <Link href={`/finance/invoices/new?clientId=${clientId}`}>
-            <Plus className="size-4" /> New invoice
-          </Link>
-        </Button>
-      </div>
-
-      {/* Mini P&L */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <PnlStat label="Total billed" value={formatINR(totalBilled)} />
-        <PnlStat label="Collected" value={formatINR(collected)} tone="success" />
-        <PnlStat
-          label="Outstanding"
-          value={formatINR(outstandingAmt)}
-          tone={outstandingAmt > 0 ? "destructive" : "default"}
-        />
-      </div>
-
-      {/* Invoices */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Invoices</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {invLoading ? (
-            <Skeleton className="h-24 w-full rounded-md" />
-          ) : !invoices || invoices.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No invoices for this client yet.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-[11px] uppercase tracking-wide">
-                    Invoice #
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase tracking-wide">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase tracking-wide">
-                    Due
-                  </TableHead>
-                  <TableHead className="text-right text-[11px] uppercase tracking-wide">
-                    Amount
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow
-                    key={inv.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/finance/invoices/${inv.id}`)}
-                  >
-                    <TableCell className="font-mono text-sm font-semibold">
-                      {inv.invoiceNumber}
-                    </TableCell>
-                    <TableCell>
-                      <InvoiceStatusBadge status={inv.status} />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {inv.dueDate ? formatDate(inv.dueDate) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {formatINR(inv.total)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Expenses */}
       <Card>
         <CardHeader>
@@ -528,6 +377,75 @@ function ClientDocumentsTab({ clientId }: { clientId: string }) {
         open={preview.open}
         onOpenChange={preview.setOpen}
         doc={preview.data}
+      />
+    </div>
+  );
+}
+
+/** Real Messages tab: this client's threads + a "Start conversation" CTA. */
+function ClientMessagesTab({ clientId }: { clientId: string }) {
+  const router = useRouter();
+  const { data: threads, isLoading, error } = useThreads({ clientId });
+  const [newOpen, setNewOpen] = React.useState(false);
+
+  const open = (id: string) => router.push(`/messages?thread=${id}`);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => setNewOpen(true)}>
+          <Plus className="size-4" /> Start conversation
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : error ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Couldn&apos;t load conversations. Please retry.
+        </p>
+      ) : !threads || threads.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center">
+          <span className="grid size-12 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-primary">
+            <MessagesSquare className="size-5" />
+          </span>
+          <div className="space-y-1">
+            <p className="font-display text-base font-semibold">
+              No conversations with this client yet
+            </p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Start a thread to keep all messages about this client in one
+              place.
+            </p>
+          </div>
+          <Button onClick={() => setNewOpen(true)}>
+            <Plus className="size-4" /> Start conversation
+          </Button>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="divide-y p-0">
+            {threads.map((t) => (
+              <ThreadListItem
+                key={t.id}
+                thread={t}
+                active={false}
+                onSelect={open}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <NewThreadSheet
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        defaultClientId={clientId}
+        onCreated={(thread) => open(thread.id)}
       />
     </div>
   );
@@ -860,10 +778,7 @@ export default function ClientDetailPage({
 
         {/* FINANCIALS */}
         <TabsContent value="financials" className="mt-4">
-          <ClientFinancialsTab
-            clientId={client.id}
-            outstanding={client.outstanding}
-          />
+          <ClientFinancialsTab clientId={client.id} />
         </TabsContent>
 
         {/* DOCUMENTS */}
@@ -873,11 +788,7 @@ export default function ClientDetailPage({
 
         {/* MESSAGES */}
         <TabsContent value="messages" className="mt-4">
-          <ComingSoon
-            icon={<MessagesSquare className="size-5" />}
-            title="Messages coming soon"
-            description="A shared thread with this client to keep all conversations in one place."
-          />
+          <ClientMessagesTab clientId={client.id} />
         </TabsContent>
       </Tabs>
 

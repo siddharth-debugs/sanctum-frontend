@@ -19,6 +19,8 @@ import {
   Download,
   Plane,
   Wrench,
+  MapPin,
+  Loader2,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -45,9 +47,11 @@ import {
   useAttendancePolicy,
   useCheckIn,
   useCheckOut,
+  // capturePunchLocation resolves coords + a reverse-geocoded area on punch.
+  capturePunchLocation,
+  geoErrorMessage,
   useWhosIn,
   useTeamSummary,
-  getGeolocation,
 } from "@/hooks/use-attendance";
 import {
   useLeaves,
@@ -122,23 +126,48 @@ function TodayPunchCard() {
     return Math.max(0, Math.round((now - new Date(rec.checkInAt).getTime()) / 60000));
   }, [isIn, rec?.checkInAt, now]);
 
+  // Capture coords + a reverse-geocoded area on every punch.
+  const [locating, setLocating] = React.useState(false);
   const onCheckIn = async () => {
-    const coords = data?.enforceGeo ? await getGeolocation() : {};
-    checkIn.mutate(coords, {
-      onSuccess: (r) => toast.success(r.isLate ? "Checked in (late)" : "Checked in"),
-      onError: (e) =>
-        toast.error(e instanceof ApiError ? e.message : "Couldn't check in"),
-    });
+    setLocating(true);
+    const punch = await capturePunchLocation();
+    setLocating(false);
+    // Location mandatory → block the punch until we have coordinates.
+    if (data?.enforceGeo && (punch.lat == null || punch.lng == null)) {
+      toast.error(geoErrorMessage(punch.error));
+      return;
+    }
+    const wasDone = !!rec?.checkOutAt; // re-check-in (corrects a checkout)
+    checkIn.mutate(
+      { lat: punch.lat, lng: punch.lng, location: punch.location },
+      {
+        onSuccess: (r) =>
+          toast.success(
+            (wasDone
+              ? "Back in"
+              : r.isLate
+                ? "Checked in (late)"
+                : "Checked in") +
+              (r.checkInLocation ? ` · ${r.checkInLocation}` : ""),
+          ),
+        onError: (e) =>
+          toast.error(e instanceof ApiError ? e.message : "Couldn't check in"),
+      },
+    );
   };
-  const onCheckOut = () =>
-    checkOut.mutate(undefined, {
+  const onCheckOut = async () => {
+    setLocating(true);
+    const punch = await capturePunchLocation();
+    setLocating(false);
+    checkOut.mutate(punch, {
       onSuccess: (r) => toast.success(`Checked out — ${fmtMinutes(r.workedMinutes)} logged`),
       onError: (e) =>
         toast.error(e instanceof ApiError ? e.message : "Couldn't check out"),
     });
+  };
 
   if (isLoading) return <Skeleton className="h-44 w-full rounded-xl" />;
-  const pending = checkIn.isPending || checkOut.isPending;
+  const pending = checkIn.isPending || checkOut.isPending || locating;
 
   return (
     <GlassCard className="p-6">
@@ -179,6 +208,37 @@ function TodayPunchCard() {
           </div>
         </div>
       </div>
+
+      {/* Where the attendance was marked (reverse-geocoded area). */}
+      {(rec?.checkInLocation || rec?.checkOutLocation || locating) && (
+        <div className="mt-4 space-y-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+          {locating && !rec?.checkInLocation && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" /> Getting your
+              location…
+            </p>
+          )}
+          {rec?.checkInLocation && (
+            <p className="flex items-start gap-1.5">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>
+                <span className="text-muted-foreground">Checked in from </span>
+                {rec.checkInLocation}
+              </span>
+            </p>
+          )}
+          {rec?.checkOutLocation && (
+            <p className="flex items-start gap-1.5">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span>
+                <span className="text-muted-foreground">Checked out from </span>
+                {rec.checkOutLocation}
+              </span>
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div className="flex items-center gap-2">
           {rec ? (
@@ -194,9 +254,15 @@ function TodayPunchCard() {
           )}
         </div>
         {isDone ? (
-          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
-            <CheckCircle2 className="size-4" /> Done for today
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+              <CheckCircle2 className="size-4" /> Done for today
+            </span>
+            {/* Checked out by mistake → clock back in (re-opens the day). */}
+            <Button onClick={onCheckIn} disabled={pending} variant="outline" size="sm">
+              <LogIn className="size-4" /> Check in again
+            </Button>
+          </div>
         ) : isIn ? (
           <Button onClick={onCheckOut} disabled={pending} variant="outline">
             <LogOut className="size-4" /> Check out
@@ -625,13 +691,24 @@ function TeamTab() {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {whosIn.members.map((m) => (
-                <div key={m.userId} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+                <div key={m.userId} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{m.name}</p>
                     {m.checkInAt && (
                       <p className="text-xs text-muted-foreground">
                         in {fmtTime(m.checkInAt)}
                         {m.checkOutAt ? ` · out ${fmtTime(m.checkOutAt)}` : " · working"}
+                      </p>
+                    )}
+                    {(m.checkInLocation || m.checkOutLocation) && (
+                      <p
+                        className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground"
+                        title={m.checkOutLocation || m.checkInLocation || ""}
+                      >
+                        <MapPin className="size-3 shrink-0" />
+                        <span className="truncate">
+                          {m.checkInLocation || m.checkOutLocation}
+                        </span>
                       </p>
                     )}
                   </div>

@@ -296,7 +296,7 @@ export default function ClientsPage() {
             emptyDescription={
               canManage
                 ? "Add your first client to start planning their content calendar."
-                : "You haven't been assigned to any clients yet."
+                : "No clients yet — your agency hasn't added any."
             }
             emptyAction={
               canManage ? (

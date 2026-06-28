@@ -6,9 +6,11 @@ import { queryKeys } from "@/lib/api/query-keys";
 import type {
   TeamMember,
   TeamMemberDetail,
+  TeamActivityEvent,
   TimeLog,
   Role,
   PermissionMap,
+  SendMemberResetResponse,
 } from "@/lib/api/types";
 
 export interface TeamFilters extends Record<string, string | boolean | undefined> {
@@ -47,6 +49,15 @@ export function useMemberTimeLogs(memberId: string) {
     queryKey: queryKeys.teamMemberTimeLogs(memberId),
     queryFn: () => api<TimeLog[]>(`/team/${memberId}/time-logs`),
     enabled: !!memberId,
+  });
+}
+
+/** GET /team/:id/activity — recent audit-log events this member performed. */
+export function useMemberActivity(memberId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.teamMemberActivity(memberId),
+    queryFn: () => api<TeamActivityEvent[]>(`/team/${memberId}/activity`),
+    enabled: !!memberId && enabled,
   });
 }
 
@@ -115,6 +126,20 @@ export function useDeleteMember() {
     mutationFn: (memberId: string) =>
       api<void>(`/team/${memberId}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team"] }),
+  });
+}
+
+/**
+ * POST /team/:userId/reset-password (owner/admin only). Generates a reset link
+ * for the member and returns it so an admin can copy/share it. The backend also
+ * emails the member.
+ */
+export function useSendMemberReset(userId: string) {
+  return useMutation({
+    mutationFn: () =>
+      api<SendMemberResetResponse>(`/team/${userId}/reset-password`, {
+        method: "POST",
+      }),
   });
 }
 

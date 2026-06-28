@@ -101,6 +101,12 @@ export interface ProjectTaskInput {
   /** Milestone to file the task under; null detaches it (Unassigned). */
   milestoneId?: string | null;
   assigneeId?: string | null;
+  /**
+   * Full assignee set (max 20). AUTHORITATIVE on PATCH — replaces the whole set;
+   * `[]` or `null` clears all. On POST, seeds the task's assignees. When set, the
+   * server mirrors `assigneeId` to the first id.
+   */
+  assigneeIds?: string[] | null;
   priority?: ProjectTaskPriority;
   estimateMinutes?: number | null;
   startDate?: string | null;
@@ -154,20 +160,37 @@ export function useUpdateProjectTask(projectId: string) {
     }: {
       taskId: string;
       input: Partial<ProjectTaskInput>;
+      /**
+       * Optional id→name map for the ids in `input.assigneeIds`. Used ONLY for
+       * the optimistic `assignees` write (the server returns the real set on
+       * settle); never sent in the request body.
+       */
+      assigneeNames?: Record<string, string>;
     }) =>
       api<ProjectTask>(`/projects/${projectId}/tasks/${taskId}`, {
         method: "PATCH",
         body: input,
       }),
-    onMutate: async ({ taskId, input }) => {
+    onMutate: async ({ taskId, input, assigneeNames }) => {
       await qc.cancelQueries({ queryKey: taskListPrefix(projectId) });
-      // Snapshot every cached list variant so we can roll back precisely.
+      // Snapshot the cached task-LIST variants only. The ["projects", id,
+      // "tasks"] prefix is shared by single-task detail/subtask/comment/
+      // dependency caches (non-array shapes); a task list key is exactly
+      // length 4 (filters object at [3]). Guard with isArray too.
       const snapshots = qc.getQueriesData<ProjectTask[]>({
-        queryKey: taskListPrefix(projectId),
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return (
+            k[0] === "projects" &&
+            k[1] === projectId &&
+            k[2] === "tasks" &&
+            k.length === 4
+          );
+        },
       });
-      const patch = optimisticTaskPatch(input);
+      const patch = optimisticTaskPatch(input, assigneeNames);
       for (const [key, list] of snapshots) {
-        if (!list) continue;
+        if (!Array.isArray(list)) continue;
         qc.setQueryData<ProjectTask[]>(
           key,
           list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
@@ -191,6 +214,7 @@ export function useUpdateProjectTask(projectId: string) {
  */
 function optimisticTaskPatch(
   input: Partial<ProjectTaskInput>,
+  assigneeNames?: Record<string, string>,
 ): Partial<ProjectTask> {
   const patch: Partial<ProjectTask> = {};
   if (input.title !== undefined) patch.title = input.title;
@@ -202,6 +226,18 @@ function optimisticTaskPatch(
   }
   if (input.milestoneId !== undefined) patch.milestoneId = input.milestoneId;
   if (input.assigneeId !== undefined) patch.assigneeId = input.assigneeId;
+  // `assigneeIds` is AUTHORITATIVE — replace the whole set. Mirror the first id
+  // onto the legacy assigneeId/Name so single-assignee surfaces stay in sync.
+  if (input.assigneeIds !== undefined) {
+    const ids = input.assigneeIds ?? [];
+    patch.assignees = ids.map((userId) => ({
+      userId,
+      name: assigneeNames?.[userId] ?? "",
+    }));
+    const firstId = ids[0] ?? null;
+    patch.assigneeId = firstId;
+    patch.assigneeName = firstId ? (assigneeNames?.[firstId] ?? null) : null;
+  }
   if (input.priority !== undefined) patch.priority = input.priority;
   if (input.estimateMinutes !== undefined)
     patch.estimateMinutes = input.estimateMinutes;

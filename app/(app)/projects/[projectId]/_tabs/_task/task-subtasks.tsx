@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { AssigneeAvatar } from "@/components/app/tasks";
+import { AssigneeStack, taskAssigneePeople } from "@/components/app/tasks";
 import { useCreateSubtask } from "@/hooks/use-task-subtasks";
 import { useUpdateProjectTask } from "@/hooks/use-project-tasks";
 import { ApiError } from "@/lib/api/client";
@@ -121,9 +121,12 @@ export function TaskSubtasks({
                 >
                   {sub.title}
                 </button>
-                {sub.assigneeName && (
-                  <AssigneeAvatar name={sub.assigneeName} />
-                )}
+                {(() => {
+                  const people = taskAssigneePeople(sub);
+                  return people.length > 0 ? (
+                    <AssigneeStack assignees={people} max={3} />
+                  ) : null;
+                })()}
               </li>
             );
           })}

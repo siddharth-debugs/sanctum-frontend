@@ -197,7 +197,10 @@ function GroupBySelect({
       <SelectTrigger
         size="default"
         aria-label="Group tasks by"
-        className="h-11 gap-2"
+        // `data-[size=default]:h-11` beats the trigger's built-in
+        // `data-[size=default]:h-9` (a plain `h-11` can't, by CSS specificity),
+        // so this matches the 44px ViewSwitcher / Filter button exactly.
+        className="data-[size=default]:h-11 gap-2"
       >
         <GroupIcon className="size-4 shrink-0 text-muted-foreground" />
         <SelectValue />
@@ -237,7 +240,7 @@ function SortSelect({
         <SelectTrigger
           size="default"
           aria-label="Sort tasks by"
-          className="h-11 gap-2"
+          className="data-[size=default]:h-11 gap-2"
         >
           <ArrowDownUp className="size-4 shrink-0 text-muted-foreground" />
           <SelectValue />
@@ -320,7 +323,11 @@ function FilterPopover({
         align="end"
         sideOffset={6}
         collisionPadding={8}
-        className="max-h-[min(36rem,80vh)] w-[min(22rem,90vw)] overflow-y-auto p-0"
+        // Never exceed the space Radix has between the trigger and the viewport
+        // edge (it flips/shifts, then exposes that as a CSS var) — so the panel
+        // always fits on screen and its body scrolls instead of overflowing.
+        // The sticky footer stays pinned to the bottom of the scroll area.
+        className="max-h-[min(36rem,var(--radix-popover-content-available-height))] w-[min(22rem,90vw)] overflow-y-auto p-0"
       >
         {/* Search */}
         <div className="border-b p-3">

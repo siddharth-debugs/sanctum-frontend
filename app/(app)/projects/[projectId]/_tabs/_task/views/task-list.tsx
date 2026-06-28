@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import {
+  Check,
   ChevronRight,
   GitPullRequestArrow,
   ListChecks,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,11 +28,12 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
-  AssigneeAvatar,
+  AssigneeStack,
   DueChip,
   LabelChip,
   PrioritySelect,
   StatusSelect,
+  taskAssigneePeople,
 } from "@/components/app/tasks";
 import { buildGroups, type TaskViewProps } from "./task-grouping";
 import { useUpdateProjectTask } from "@/hooks/use-project-tasks";
@@ -83,9 +86,13 @@ export function TaskList({
   );
 
   const patch = React.useCallback(
-    (taskId: string, input: Parameters<typeof updateTask.mutate>[0]["input"]) =>
+    (
+      taskId: string,
+      input: Parameters<typeof updateTask.mutate>[0]["input"],
+      assigneeNames?: Record<string, string>,
+    ) =>
       updateTask.mutate(
-        { taskId, input },
+        { taskId, input, assigneeNames },
         {
           onError: (err) =>
             toast.error(
@@ -190,7 +197,12 @@ function TaskRow({
   onOpenTask: (taskId: string) => void;
   onPatch: (
     taskId: string,
-    input: { status?: ProjectTaskStatus; priority?: ProjectTask["priority"]; assigneeId?: string | null },
+    input: {
+      status?: ProjectTaskStatus;
+      priority?: ProjectTask["priority"];
+      assigneeIds?: string[] | null;
+    },
+    assigneeNames?: Record<string, string>,
   ) => void;
   indented?: boolean;
 }) {
@@ -278,10 +290,10 @@ function TaskRow({
       </span>
       <AssigneePopover
         members={members}
-        value={task.assigneeId ?? null}
-        currentName={task.assigneeName ?? null}
-        onChange={(id) => onPatch(task.id, { assigneeId: id })}
-        taskTitle={task.title}
+        task={task}
+        onChange={(ids, names) =>
+          onPatch(task.id, { assigneeIds: ids }, names)
+        }
       />
       <span className="hidden shrink-0 sm:block">
         <StatusSelect
@@ -295,32 +307,53 @@ function TaskRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Inline assignee picker                                              */
+/* Inline assignee picker — multi-select; the trigger shows an avatar    */
+/* stack and clicking a member toggles them.                             */
 /* ------------------------------------------------------------------ */
 
 function AssigneePopover({
   members,
-  value,
-  currentName,
+  task,
   onChange,
-  taskTitle,
 }: {
   members: ProjectMember[];
-  value: string | null;
-  currentName: string | null;
-  onChange: (userId: string | null) => void;
-  taskTitle: string;
+  task: ProjectTask;
+  /** Replace the whole set; `names` carries id→name for optimistic writes. */
+  onChange: (ids: string[], names: Record<string, string>) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const people = taskAssigneePeople(task);
+  const selectedIds = React.useMemo(
+    () => people.map((p) => p.userId),
+    [people],
+  );
+  const selectedSet = React.useMemo(
+    () => new Set(selectedIds),
+    [selectedIds],
+  );
+  const nameMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of members) map[m.userId] = m.userName;
+    return map;
+  }, [members]);
+
+  function commit(ids: string[]) {
+    onChange(ids, nameMap);
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={`Assignee for ${taskTitle}: ${currentName ?? "unassigned"}`}
-          className="grid size-8 shrink-0 place-items-center rounded-md transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Assignees for ${task.title}: ${
+            people.length > 0
+              ? people.map((p) => p.name).join(", ")
+              : "unassigned"
+          }`}
+          className="grid h-8 min-w-8 shrink-0 place-items-center rounded-md px-1 transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <AssigneeAvatar name={currentName} size="sm" />
+          <AssigneeStack assignees={people} size="sm" max={3} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-0">
@@ -329,30 +362,52 @@ function AssigneePopover({
           <CommandList>
             <CommandEmpty>No members.</CommandEmpty>
             <CommandGroup>
-              <CommandItem
-                value="__unassigned__"
-                onSelect={() => {
-                  onChange(null);
-                  setOpen(false);
-                }}
-              >
-                <AssigneeAvatar name={null} size="sm" />
-                <span className="text-muted-foreground">Unassigned</span>
-              </CommandItem>
-              {members.map((m) => (
+              {members.map((m) => {
+                const checked = selectedSet.has(m.userId);
+                return (
+                  <CommandItem
+                    key={m.userId}
+                    value={m.userName}
+                    aria-selected={checked}
+                    onSelect={() =>
+                      commit(
+                        checked
+                          ? selectedIds.filter((id) => id !== m.userId)
+                          : [...selectedIds, m.userId],
+                      )
+                    }
+                    className="gap-2"
+                  >
+                    <Check
+                      className={cn(
+                        "size-4 shrink-0",
+                        checked ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <AssigneeStack
+                      assignees={[{ userId: m.userId, name: m.userName }]}
+                      size="sm"
+                      showName
+                    />
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+            {selectedIds.length > 0 && (
+              <CommandGroup className="border-t">
                 <CommandItem
-                  key={m.userId}
-                  value={m.userName}
+                  value="__unassign_all__"
                   onSelect={() => {
-                    onChange(m.userId === value ? null : m.userId);
+                    commit([]);
                     setOpen(false);
                   }}
+                  className="gap-2 text-muted-foreground"
                 >
-                  <AssigneeAvatar name={m.userName} size="sm" />
-                  <span className="truncate">{m.userName}</span>
+                  <X className="size-4" />
+                  Unassign all
                 </CommandItem>
-              ))}
-            </CommandGroup>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

@@ -37,7 +37,10 @@ import { TaskProperties, type AssigneeOption } from "./task-properties";
 import { TaskSubtasks } from "./task-subtasks";
 import { TaskDependencies } from "./task-dependencies";
 import { TaskFeed } from "./task-feed";
+import { TaskTimerControl } from "./task-timer-control";
+import { TaskTimeline } from "./task-timeline";
 import { CommentComposer, type MentionMember } from "./comment-composer";
+import { useTaskTimeLogs } from "@/hooks/use-timers";
 
 export interface TaskDetailSheetProps {
   projectId: string;
@@ -103,6 +106,9 @@ export function TaskDetailSheet({
   const deleteTask = useDeleteProjectTask(projectId);
   const setLabels = useSetTaskLabels(projectId);
   const createComment = useCreateTaskComment(projectId, taskId ?? "");
+  // Time-log total for the timer control's "Total tracked" summary. Shares the
+  // same query key the timeline reads, so it's a single fetch per task.
+  const { data: taskTime } = useTaskTimeLogs(projectId, taskId);
 
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
@@ -132,13 +138,28 @@ export function TaskDetailSheet({
     [detail?.labels],
   );
 
+  // Current assignee selection: prefer the full `assignees` set, falling back to
+  // the legacy single `assigneeId` when the array is absent.
+  const assigneeIds = React.useMemo(() => {
+    if (task?.assignees && task.assignees.length > 0)
+      return task.assignees.map((a) => a.userId);
+    return task?.assigneeId ? [task.assigneeId] : [];
+  }, [task?.assignees, task?.assigneeId]);
+
+  // id → name lookup for optimistic assignee writes.
+  const assigneeNames = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const o of assigneeOptions) map[o.id] = o.name;
+    return map;
+  }, [assigneeOptions]);
+
   function patch(
     input: Parameters<typeof updateTask.mutate>[0]["input"],
     errorMsg: string,
   ) {
     if (!task) return;
     updateTask.mutate(
-      { taskId: task.id, input },
+      { taskId: task.id, input, assigneeNames },
       {
         onError: (err) =>
           toast.error(err instanceof ApiError ? err.message : errorMsg),
@@ -237,6 +258,14 @@ export function TaskDetailSheet({
 
             {/* Scroll body */}
             <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+              {/* Timer control — start/stop a live timer bound to this task. */}
+              <TaskTimerControl
+                projectId={projectId}
+                taskId={task.id}
+                taskTitle={task.title}
+                totalMinutes={taskTime?.totalMinutes ?? 0}
+              />
+
               {/* Description */}
               <TaskDescriptionInline
                 value={task.description}
@@ -252,7 +281,7 @@ export function TaskDetailSheet({
                 projectId={projectId}
                 status={task.status}
                 priority={task.priority}
-                assigneeId={task.assigneeId ?? null}
+                assigneeIds={assigneeIds}
                 assigneeOptions={assigneeOptions}
                 startDate={task.startDate}
                 dueDate={task.dueDate}
@@ -266,8 +295,8 @@ export function TaskDetailSheet({
                 onPriorityChange={(priority: ProjectTaskPriority) =>
                   patch({ priority }, "Couldn't update priority")
                 }
-                onAssigneeChange={(assigneeId) =>
-                  patch({ assigneeId }, "Couldn't update assignee")
+                onAssigneesChange={(ids) =>
+                  patch({ assigneeIds: ids }, "Couldn't update assignees")
                 }
                 onStartDateChange={(startDate) =>
                   patch({ startDate }, "Couldn't update start date")
@@ -317,6 +346,15 @@ export function TaskDetailSheet({
                 taskId={task.id}
                 dependencies={detail.dependencies}
                 onOpenTask={onOpenTask}
+              />
+
+              <Separator />
+
+              {/* Time log timeline */}
+              <TaskTimeline
+                projectId={projectId}
+                taskId={task.id}
+                currentUserId={me.data?.user.id ?? null}
               />
 
               <Separator />

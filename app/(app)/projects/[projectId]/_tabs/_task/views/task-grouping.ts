@@ -58,6 +58,16 @@ export interface TaskGroupColumn {
 /** Sentinel key for the "unset" bucket (no assignee / no milestone / etc.). */
 export const NONE_GROUP_KEY = "__none__";
 
+/**
+ * All assignee user ids on a task — prefers the full `assignees` set, falling
+ * back to the legacy single `assigneeId` when the array is absent.
+ */
+export function taskAssigneeIds(task: ProjectTask): string[] {
+  if (task.assignees && task.assignees.length > 0)
+    return task.assignees.map((a) => a.userId);
+  return task.assigneeId ? [task.assigneeId] : [];
+}
+
 /** Drag-to-recategorize is only meaningful for single-valued scalar fields. */
 export function groupableDrag(group: ProjectTaskGroup): boolean {
   return (
@@ -132,9 +142,13 @@ export function buildGroups(
   }
 
   if (group === "assignee") {
+    // A task may have MANY assignees, so (like labels) it can appear under each
+    // of them; a trailing "Unassigned" bucket catches tasks with no assignee.
     const cols: TaskGroupColumn[] = [];
     for (const m of lookups.members) {
-      const bucket = tasks.filter((t) => t.assigneeId === m.userId);
+      const bucket = tasks.filter((t) =>
+        taskAssigneeIds(t).includes(m.userId),
+      );
       if (bucket.length === 0) continue;
       cols.push({
         key: m.userId,
@@ -143,7 +157,7 @@ export function buildGroups(
         tasks: bucket,
       });
     }
-    const unassigned = tasks.filter((t) => !t.assigneeId);
+    const unassigned = tasks.filter((t) => taskAssigneeIds(t).length === 0);
     if (unassigned.length > 0) {
       cols.push({
         key: NONE_GROUP_KEY,

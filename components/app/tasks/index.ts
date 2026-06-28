@@ -14,6 +14,12 @@ export {
   type LabelMultiSelectProps,
 } from "./label-multi-select";
 export { AssigneeAvatar, type AssigneeAvatarProps } from "./assignee-avatar";
+export {
+  AssigneeStack,
+  taskAssigneePeople,
+  type AssigneeStackProps,
+  type AssigneeStackPerson,
+} from "./assignee-stack";
 export { DueChip, type DueChipProps } from "./due-chip";
 export { EstimateInput, type EstimateInputProps } from "./estimate-input";
 export {

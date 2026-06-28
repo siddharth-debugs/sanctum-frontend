@@ -128,14 +128,6 @@ export type ProjectLabelColor =
 // lib/money.ts formatINR(); never render these as plain numbers.
 // ---------------------------------------------------------------------------
 
-export type InvoiceStatus =
-  | "draft"
-  | "sent"
-  | "partially_paid"
-  | "paid"
-  | "overdue"
-  | "cancelled";
-
 export type ExpenseCategory =
   | "software"
   | "salaries"
@@ -147,79 +139,6 @@ export type ExpenseCategory =
   | "taxes"
   | "utilities"
   | "other";
-
-/** A single invoice line item (paise fields starred in the contract). */
-export interface InvoiceItem {
-  id: string;
-  invoiceId: string;
-  description: string;
-  quantity: number;
-  unit: string;
-  /** paise */
-  rate: number;
-  gstRate: number;
-  /** paise */
-  amount: number;
-  position: number;
-  createdAt: string;
-}
-
-/** A payment recorded against an invoice. */
-export interface InvoicePayment {
-  id: string;
-  invoiceId: string;
-  /** paise */
-  amount: number;
-  paidAt: string;
-  method: string | null;
-  reference: string | null;
-  notes: string | null;
-  recordedBy: string | null;
-  createdAt: string;
-}
-
-/** GET /invoices row. Detail (GET /invoices/:id) adds `items` + `payments`. */
-export interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  clientId: string;
-  clientName: string;
-  projectId: string | null;
-  projectName: string | null;
-  status: InvoiceStatus;
-  baseStatus: InvoiceStatus;
-  issueDate: string | null;
-  dueDate: string | null;
-  isInterstate: 0 | 1;
-  currency: "INR" | string;
-  /** paise */
-  subtotal: number;
-  /** paise */
-  taxTotal: number;
-  /** paise */
-  cgst: number;
-  /** paise */
-  sgst: number;
-  /** paise */
-  igst: number;
-  /** paise */
-  total: number;
-  /** paise */
-  amountPaid: number;
-  /** paise */
-  amountDue: number;
-  notes: string | null;
-  terms: string | null;
-  bankDetails: string | null;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-  itemCount: number;
-  /** Detail-only. */
-  items?: InvoiceItem[];
-  /** Detail-only. */
-  payments?: InvoicePayment[];
-}
 
 /** GET /expenses row. */
 export interface Expense {
@@ -247,23 +166,9 @@ export interface Expense {
 export interface FinanceOverview {
   range: { from: string; to: string };
   /** paise */
-  totalRevenue: number;
-  /** paise */
-  collected: number;
-  /** paise */
-  outstanding: number;
-  /** paise */
   expenses: number;
-  /** paise */
+  /** paise — net profit; with no revenue term this is simply −expenses. */
   netProfit: number;
-  marginPct: number;
-  pipeline: {
-    overdue: { count: number; amount: number };
-    dueThisWeek: { count: number; amount: number };
-    dueThisMonth: { count: number; amount: number };
-    paidThisMonth: { count: number; amount: number };
-  };
-  revenueByClient: Array<{ clientId: string; clientName: string; amount: number }>;
   expensesByCategory: Array<{ category: ExpenseCategory; amount: number }>;
 }
 
@@ -474,6 +379,37 @@ export interface SignupResponse {
   agency: { id: string; name: string; slug: string };
 }
 
+/** GET /auth/invite?token= — preview of a pending team invite. */
+export interface InviteInfo {
+  email: string;
+  role: "admin" | "member";
+  agencyName: string;
+  fullName: string | null;
+}
+
+/** POST /auth/accept-invite payload. */
+export interface AcceptInviteResponse {
+  user: { id: string; email: string; fullName: string | null; role: Role };
+  agencyId: string;
+}
+
+/** GET /auth/reset-password?token= — preview of a valid reset token. */
+export interface ResetInfo {
+  email: string;
+}
+
+/** POST /auth/reset-password payload — sets a new password and logs the user in. */
+export interface ResetPasswordResponse {
+  user: { id: string; email: string; fullName: string | null; role: Role };
+  agencyId: string;
+}
+
+/** POST /team/:userId/reset-password payload (owner/admin). */
+export interface SendMemberResetResponse {
+  ok: boolean;
+  resetUrl: string;
+}
+
 /** GET /team row (array). */
 export interface TeamMember {
   id: string;
@@ -500,6 +436,23 @@ export interface TeamMember {
   projectCount: number;
   loggedMinutesThisWeek: number;
   utilizationPct: number;
+  /** Presence today (agency timezone): 'in' once checked in, 'out' after check-out, null otherwise. */
+  presence: "in" | "out" | null;
+  /** True if the member has checked in today (regardless of later check-out). */
+  checkedInToday: boolean;
+  /** ISO check-in / check-out instants for today, when present. */
+  checkInAt: string | null;
+  checkOutAt: string | null;
+}
+
+/** GET /team/:id/activity — one recent audit-log event for a member. */
+export interface TeamActivityEvent {
+  id: string;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 /** A single logged time entry for a member. */
@@ -587,6 +540,12 @@ export interface AttendanceRecord {
   isLate: boolean;
   source: "self" | "admin" | "regularized" | "system" | null;
   note: string | null;
+  checkInLat?: number | null;
+  checkInLng?: number | null;
+  checkInLocation?: string | null;
+  checkOutLat?: number | null;
+  checkOutLng?: number | null;
+  checkOutLocation?: string | null;
 }
 
 /** GET /attendance/today payload. */
@@ -810,6 +769,8 @@ export interface WhosInMember {
   checkOutAt: string | null;
   workedMinutes: number;
   isLate: boolean;
+  checkInLocation?: string | null;
+  checkOutLocation?: string | null;
 }
 
 export interface WhosIn {
@@ -934,8 +895,14 @@ export interface ProjectTask {
   title: string;
   description?: string | null;
   status: ProjectTaskStatus;
+  /** Primary/first assignee (legacy compat — mirrors `assignees[0]`). */
   assigneeId?: string | null;
   assigneeName?: string | null;
+  /**
+   * Every assignee on the task. Empty array when none. `assigneeId` mirrors the
+   * first entry for back-compat; prefer this when rendering the full set.
+   */
+  assignees?: { userId: string; name: string }[];
   /** Priority bucket; defaults to "none". */
   priority: ProjectTaskPriority;
   /** Time estimate in whole minutes, or null when unset. */
@@ -1094,6 +1061,34 @@ export interface ProjectTimeLog {
   taskTitle: string | null;
 }
 
+/** One row in a task's time-log timeline (who · start · duration · note). */
+export interface TaskTimeLog {
+  id: string;
+  minutes: number;
+  /** ISO start instant — the entry's end is `workDate + minutes`. */
+  workDate: string;
+  note: string | null;
+  userId: string;
+  userName: string | null;
+}
+
+/** GET /projects/:id/tasks/:taskId/time-logs — task timeline + summed total. */
+export interface TaskTimeLogs {
+  totalMinutes: number;
+  logCount: number;
+  /** Timers running on THIS task right now (live work in progress). */
+  activeTimerCount: number;
+  logs: TaskTimeLog[];
+}
+
+/** PATCH /timers/logs/:logId → the updated note + scoping ids. */
+export interface TimeLogUpdate {
+  id: string;
+  note: string | null;
+  projectId: string | null;
+  taskId: string | null;
+}
+
 /**
  * GET /projects/:id/activity row — an audit-log entry. `action` is a dotted verb
  * ("task.create", "task.status_change", "timer.stop", "member.add", …) and
@@ -1142,6 +1137,8 @@ export interface PostComment {
   authorType: "user" | "client";
   authorUserId?: string | null;
   authorLabel?: string | null;
+  /** Resolved display name (portal): reviewer's label or the agency brand. */
+  authorName?: string | null;
   createdAt: string;
 }
 
@@ -1289,6 +1286,15 @@ export interface ThreadSummary {
 /** GET /messages/threads/:id — full thread (currently same shape as summary). */
 export type Thread = ThreadSummary;
 
+/** A file/image attached to a message (mirrors backend MessageAttachment). */
+export interface MessageAttachment {
+  url: string;
+  type: "image" | "file";
+  name: string;
+  mime?: string | null;
+  bytes?: number | null;
+}
+
 /** GET /messages/threads/:id/messages row + 'message:new' payload. */
 export interface Message {
   id: string;
@@ -1297,12 +1303,20 @@ export interface Message {
   senderName: string;
   senderAvatarUrl?: string | null;
   body: string;
+  /** Files/images attached to this message (empty array when none). */
+  attachments?: MessageAttachment[];
   createdAt: string;
   editedAt?: string | null;
   /** Client-side only: present on optimistic/echoed messages for dedupe. */
   clientMsgId?: string;
   /** Client-side only: optimistic message not yet acked by the server. */
   pending?: boolean;
+}
+
+/** Payload broadcast over 'message:deleted'. */
+export interface MessageDeletedEvent {
+  threadId: string;
+  messageId: string;
 }
 
 /** A partial thread patch broadcast over 'thread:updated'. */

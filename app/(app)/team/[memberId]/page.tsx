@@ -21,12 +21,17 @@ import {
   Activity,
   ShieldCheck,
   Lock,
+  KeyRound,
+  Copy,
+  Check,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
 import { InviteMemberSheet } from "@/components/app/invite-member-sheet";
 import { LogTimeDialog } from "@/components/app/log-time-dialog";
 import { RoleBadge, UtilizationBar } from "@/components/app/team-bits";
+import { PresenceBadge } from "@/components/app/team-presence";
+import { MemberActivityFeed } from "@/components/app/team-activity";
 import { ProjectStatusBadge, TaskStatusBadge } from "@/components/app/project-badges";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -61,7 +66,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTeamMember, useUpdateMember, useDeleteMember } from "@/hooks/use-team";
+import {
+  useTeamMember,
+  useUpdateMember,
+  useDeleteMember,
+  useSendMemberReset,
+} from "@/hooks/use-team";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { initials, formatDate } from "@/lib/utils";
 import { formatINR } from "@/lib/money";
@@ -264,6 +274,121 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
   );
 }
 
+/**
+ * Owner/admin action: generate a password-reset link for a member. The backend
+ * emails the member and also returns the link, so we surface a "Copy link"
+ * affordance in case email isn't delivered.
+ */
+function SendResetDialog({
+  open,
+  onOpenChange,
+  member,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  member: TeamMemberDetail;
+}) {
+  const send = useSendMemberReset(member.id);
+  const [resetUrl, setResetUrl] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  // Reset local state whenever the dialog opens.
+  React.useEffect(() => {
+    if (open) {
+      setResetUrl(null);
+      setCopied(false);
+    }
+  }, [open]);
+
+  const onSend = () => {
+    send.mutate(undefined, {
+      onSuccess: (res) => {
+        setResetUrl(res.resetUrl);
+        toast.success(`Password reset link sent to ${member.email}`);
+      },
+      onError: (err) =>
+        toast.error(
+          err instanceof ApiError ? err.message : "Couldn't send reset link",
+        ),
+    });
+  };
+
+  const onCopy = async () => {
+    if (!resetUrl) return;
+    try {
+      await navigator.clipboard.writeText(resetUrl);
+      setCopied(true);
+      toast.success("Reset link copied");
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Couldn't copy the link");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send password reset</DialogTitle>
+          <DialogDescription>
+            {resetUrl
+              ? `We emailed a reset link to ${member.email}. You can also copy the link below to share it directly.`
+              : `This emails ${member.email} a secure link to set a new password. The link expires after a while.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {resetUrl && (
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
+            <input
+              readOnly
+              value={resetUrl}
+              aria-label="Password reset link"
+              onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onCopy}
+            >
+              {copied ? (
+                <>
+                  <Check className="size-4" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="size-4" /> Copy link
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        <DialogFooter>
+          {resetUrl ? (
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                disabled={send.isPending}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onSend} disabled={send.isPending}>
+                <KeyRound className="size-4" />
+                {send.isPending ? "Sending…" : "Send reset link"}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MemberDetailPage({
   params,
 }: {
@@ -271,6 +396,8 @@ export default function MemberDetailPage({
 }) {
   const { memberId } = React.use(params);
   const router = useRouter();
+  const { canManage } = useCan();
+  const canManageTeam = canManage("team");
   const { data: member, isLoading, error } = useTeamMember(memberId);
   const update = useUpdateMember(memberId);
   const del = useDeleteMember();
@@ -279,6 +406,7 @@ export default function MemberDetailPage({
   const logTimeDialog = useDisclosure();
   const deactivateDialog = useDisclosure();
   const deleteDialog = useDisclosure();
+  const resetDialog = useDisclosure();
 
   if (isLoading) {
     return (
@@ -360,6 +488,7 @@ export default function MemberDetailPage({
               {name}
               <StatusBadge status={member.status} />
               <RoleBadge role={member.role} label={member.roleName} />
+              <PresenceBadge member={member} />
             </span>
           </span>
         }
@@ -376,39 +505,48 @@ export default function MemberDetailPage({
           </span>
         }
         actions={
-          <>
-            <Button variant="outline" onClick={() => editSheet.onOpen()}>
-              <Pencil className="size-4" /> Edit
-            </Button>
-            {!isOwner && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => deactivateDialog.onOpen()}
-                >
-                  {isActive ? "Deactivate" : "Reactivate"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => deleteDialog.onOpen()}
-                >
-                  <Trash2 className="size-4" /> Delete
-                </Button>
-              </>
-            )}
-          </>
+          canManageTeam ? (
+            <>
+              <Button variant="outline" onClick={() => editSheet.onOpen()}>
+                <Pencil className="size-4" /> Edit
+              </Button>
+              {!isOwner && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => resetDialog.onOpen()}
+                  >
+                    <KeyRound className="size-4" /> Send password reset
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => deactivateDialog.onOpen()}
+                  >
+                    {isActive ? "Deactivate" : "Reactivate"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => deleteDialog.onOpen()}
+                  >
+                    <Trash2 className="size-4" /> Delete
+                  </Button>
+                </>
+              )}
+            </>
+          ) : undefined
         }
       />
 
       <Tabs defaultValue="overview">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="access">Access</TabsTrigger>
+          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="timelogs">Time</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="timelogs">Time Logs</TabsTrigger>
+          <TabsTrigger value="projects">Projects</TabsTrigger>
+          {canManageTeam && <TabsTrigger value="access">Access</TabsTrigger>}
         </TabsList>
 
         {/* OVERVIEW */}
@@ -537,8 +675,8 @@ export default function MemberDetailPage({
           )}
         </TabsContent>
 
-        {/* ACTIVITY */}
-        <TabsContent value="activity" className="mt-4">
+        {/* TASKS — active tasks assigned across projects */}
+        <TabsContent value="tasks" className="mt-4">
           {member.activeTasks && member.activeTasks.length > 0 ? (
             <Card>
               <CardHeader>
@@ -565,7 +703,14 @@ export default function MemberDetailPage({
                   <TableBody>
                     {member.activeTasks.map((t) => (
                       <TableRow key={t.id} className="hover:bg-transparent">
-                        <TableCell className="font-medium">{t.title}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/projects/${t.projectId}?task=${t.id}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {t.title}
+                          </Link>
+                        </TableCell>
                         <TableCell>
                           <Link
                             href={`/projects/${t.projectId}`}
@@ -588,11 +733,25 @@ export default function MemberDetailPage({
             </Card>
           ) : (
             <EmptyState
-              icon={<Activity className="size-5" />}
-              title="No recent activity"
-              description="Active tasks and recent work will appear here once this member gets going."
+              icon={<ListTodo className="size-5" />}
+              title="No active tasks"
+              description="Assigned tasks across projects will appear here once this member picks up work."
             />
           )}
+        </TabsContent>
+
+        {/* ACTIVITY — recent audit-log events this member performed */}
+        <TabsContent value="activity" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="size-4 text-primary" /> Recent activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <MemberActivityFeed memberId={member.id} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* TIME LOGS */}
@@ -686,6 +845,12 @@ export default function MemberDetailPage({
         open={logTimeDialog.open}
         onOpenChange={logTimeDialog.setOpen}
         memberId={member.id}
+      />
+
+      <SendResetDialog
+        open={resetDialog.open}
+        onOpenChange={resetDialog.setOpen}
+        member={member}
       />
 
       {/* Deactivate / reactivate confirm */}

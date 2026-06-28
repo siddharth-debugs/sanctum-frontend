@@ -1,6 +1,7 @@
 /** Centralized TanStack Query key factory. */
 export const queryKeys = {
   me: ["me"] as const,
+  resetToken: (token: string | null) => ["reset-token", token] as const,
   agency: ["agency"] as const,
   rolePermissions: ["agency", "roles"] as const,
   customRoles: ["agency", "custom-roles"] as const,
@@ -21,9 +22,14 @@ export const queryKeys = {
     ["clients", clientId, "posts", filters ?? {}] as const,
   post: (clientId: string, postId: string) =>
     ["clients", clientId, "posts", postId] as const,
+  postComments: (clientId: string, postId: string) =>
+    ["clients", clientId, "posts", postId, "comments"] as const,
+  postApprovals: (clientId: string, postId: string) =>
+    ["clients", clientId, "posts", postId, "approvals"] as const,
   team: (filters?: Record<string, unknown>) => ["team", filters ?? {}] as const,
   teamMember: (id: string) => ["team", id] as const,
   teamMemberTimeLogs: (id: string) => ["team", id, "time-logs"] as const,
+  teamMemberActivity: (id: string) => ["team", id, "activity"] as const,
   projects: (filters?: Record<string, unknown>) =>
     ["projects", filters ?? {}] as const,
   project: (id: string) => ["projects", id] as const,
@@ -37,6 +43,8 @@ export const queryKeys = {
     ["projects", projectId, "tasks", taskId, "comments"] as const,
   projectTaskDependencies: (projectId: string, taskId: string) =>
     ["projects", projectId, "tasks", taskId, "dependencies"] as const,
+  projectTaskTimeLogs: (projectId: string, taskId: string) =>
+    ["projects", projectId, "tasks", taskId, "time-logs"] as const,
   projectLabels: (projectId: string) =>
     ["projects", projectId, "labels"] as const,
   projectMilestones: (projectId: string) =>
@@ -58,9 +66,6 @@ export const queryKeys = {
   portal: (token: string, month?: string) =>
     ["portal", token, month ?? "current"] as const,
   // Finance
-  invoices: (filters?: Record<string, unknown>) =>
-    ["invoices", filters ?? {}] as const,
-  invoice: (id: string) => ["invoices", id] as const,
   expenses: (filters?: Record<string, unknown>) =>
     ["expenses", filters ?? {}] as const,
   expense: (id: string) => ["expenses", id] as const,

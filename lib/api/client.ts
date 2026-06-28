@@ -1,4 +1,4 @@
-import { env } from "@/lib/env";
+import { apiBaseUrl } from "@/lib/env";
 import type { ApiEnvelope, ApiErrorBody } from "./types";
 
 export class ApiError extends Error {
@@ -24,7 +24,7 @@ interface RequestOpts extends Omit<RequestInit, "body"> {
 }
 
 function buildUrl(path: string, query?: RequestOpts["query"]) {
-  const base = env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+  const base = apiBaseUrl();
   const url = new URL(`${base}${path.startsWith("/") ? path : `/${path}`}`);
   if (query) {
     for (const [k, v] of Object.entries(query)) {

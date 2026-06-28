@@ -46,10 +46,13 @@ export function NewThreadSheet({
   open,
   onOpenChange,
   onCreated,
+  /** Pre-select (and lock) a client — e.g. starting a thread from a client page. */
+  defaultClientId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (thread: ThreadSummary) => void;
+  defaultClientId?: string;
 }) {
   const session = useSession();
   const create = useCreateThread();
@@ -61,7 +64,7 @@ export function NewThreadSheet({
     defaultValues: {
       subject: "",
       participantIds: [],
-      clientId: "",
+      clientId: defaultClientId ?? "",
       projectId: "",
       body: "",
     },
@@ -72,12 +75,12 @@ export function NewThreadSheet({
       form.reset({
         subject: "",
         participantIds: [],
-        clientId: "",
+        clientId: defaultClientId ?? "",
         projectId: "",
         body: "",
       });
     }
-  }, [open, form]);
+  }, [open, form, defaultClientId]);
 
   // Filter projects by the selected client (if any).
   const selectedClientId = form.watch("clientId");
@@ -192,6 +195,7 @@ export function NewThreadSheet({
                 placeholder="Select client"
                 options={clientOptions}
                 emptyText="No clients."
+                disabled={!!defaultClientId}
               />
               <ComboboxField
                 control={form.control}

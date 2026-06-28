@@ -63,6 +63,11 @@ export function useNotificationStream() {
       qc.invalidateQueries({ queryKey: ["notifications"] });
       // A leave/regularization decision or request also affects attendance views.
       qc.invalidateQueries({ queryKey: ["attendance"] });
+      // A portal approval / change-request / comment changes post status and
+      // the post's activity feed — refresh the Clients/calendar surfaces live.
+      if (n.entityType === "post") {
+        qc.invalidateQueries({ queryKey: ["clients"] });
+      }
       toast(n.title, { description: n.body ?? undefined });
     };
     socket.on("notification:new", onNew);

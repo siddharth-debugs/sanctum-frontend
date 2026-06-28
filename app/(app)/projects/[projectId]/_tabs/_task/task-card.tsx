@@ -5,11 +5,12 @@ import { GitPullRequestArrow, ListChecks, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
-  AssigneeAvatar,
+  AssigneeStack,
   DueChip,
   LabelChip,
   PriorityIcon,
   StatusBadge,
+  taskAssigneePeople,
 } from "@/components/app/tasks";
 import type { ProjectTask } from "@/lib/api/types";
 
@@ -48,9 +49,10 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(
     const blockedBy = task.blockedByCount ?? 0;
     const comments = task.commentCount ?? 0;
     const isDone = task.status === "done";
+    const assignees = taskAssigneePeople(task);
 
     const hasFooter =
-      !!task.assigneeName ||
+      assignees.length > 0 ||
       !!task.dueDate ||
       subtaskTotal > 0 ||
       blockedBy > 0 ||
@@ -106,8 +108,8 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(
         {/* Footer meta: assignee · due · subtasks · blocked · comments. */}
         {hasFooter && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-            {task.assigneeName && (
-              <AssigneeAvatar name={task.assigneeName} size="sm" />
+            {assignees.length > 0 && (
+              <AssigneeStack assignees={assignees} size="sm" />
             )}
             <DueChip date={task.dueDate} hideWhenEmpty />
             {subtaskTotal > 0 && (

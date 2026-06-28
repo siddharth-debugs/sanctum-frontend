@@ -45,6 +45,7 @@ import { TasksTab } from "./_tabs/tasks-tab";
 import { MilestonesTab } from "./_tabs/milestones-tab";
 import { TeamTab } from "./_tabs/team-tab";
 import { ActivityTab } from "./_tabs/activity-tab";
+import { ProjectTimerPill } from "./_project-timer-pill";
 
 /* ------------------------------------------------------------------ */
 /* Stat card                                                           */
@@ -303,6 +304,10 @@ export default function ProjectDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Floating running-timer pill for this project (sticks while you move
+          between tabs). Hidden unless the user's active timer is here. */}
+      <ProjectTimerPill projectId={project.id} />
     </div>
   );
 }

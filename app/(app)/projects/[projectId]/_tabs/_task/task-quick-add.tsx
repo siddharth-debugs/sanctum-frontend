@@ -5,9 +5,10 @@ import { format } from "date-fns";
 import { CalendarPlus, CornerDownLeft, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { cn } from "@/lib/utils";
+import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Popover,
   PopoverContent,
@@ -19,11 +20,11 @@ import {
   startOfDay,
 } from "@/components/fields/date-picker/date-picker.utils";
 import {
-  AssigneeAvatar,
+  AssigneeStack,
   DueChip,
   PriorityIcon,
 } from "@/components/app/tasks";
-import { PRIORITY_META } from "@/lib/constants/project-options";
+import { PRIORITY_META, PRIORITY_OPTIONS } from "@/lib/constants/project-options";
 import { ApiError } from "@/lib/api/client";
 import { useProjectMembers } from "@/hooks/use-project-members";
 import { useCreateProjectTask } from "@/hooks/use-project-tasks";
@@ -56,25 +57,52 @@ const PRIORITY_TOKENS: Record<string, ProjectTaskPriority> = {
   none: "none",
 };
 
+/** Priority autocomplete options (highest → lowest), keyed by their `!token`. */
+const PRIORITY_SUGGESTIONS: { value: ProjectTaskPriority; label: string }[] =
+  PRIORITY_OPTIONS.map((o) => ({
+    value: o.value as ProjectTaskPriority,
+    label: o.label,
+  }));
+
+/** A display name → @token (spaces/`_` collapsed) so the title round-trips. */
+function memberToken(name: string): string {
+  return name.replace(/\s+/g, "");
+}
+
 interface ParsedDraft {
-  /** Title with the `!priority` / `@assignee` tokens stripped out. */
+  /** Title with all `!priority` / `@assignee` tokens stripped out. */
   title: string;
   priority: ProjectTaskPriority;
-  assignee: ProjectMember | null;
-  /** A raw `@token` that matched no member (surface as a hint). */
-  unknownAssignee: string | null;
+  /** Every matched assignee, de-duplicated, in first-seen order. */
+  assignees: ProjectMember[];
+  /** Raw `@token`s that matched no member (surface as a hint). */
+  unknownAssignees: string[];
+}
+
+/** Resolve a raw `@token` to a member (case-insensitive, name-collapsed). */
+function matchMember(
+  token: string,
+  members: ProjectMember[],
+): ProjectMember | undefined {
+  const lower = token.toLowerCase();
+  return members.find((mem) => {
+    const name = mem.userName.toLowerCase();
+    const first = name.split(/\s+/)[0];
+    const collapsed = name.replace(/\s+/g, "");
+    return first === lower || collapsed === lower || name === lower;
+  });
 }
 
 /**
  * Parse the raw input into a title + inline `!priority` and `@assignee` tokens.
- * The LAST matching token of each kind wins; matched tokens are removed from the
- * title. Assignee matching is case-insensitive on the member's name (first word
- * or the full name with `_`/spaces collapsed).
+ * The LAST matching `!priority` wins; ALL matching `@assignee` tokens are
+ * collected (de-duped). Matched tokens are stripped from the title.
  */
 function parseDraft(raw: string, members: ProjectMember[]): ParsedDraft {
   let priority: ProjectTaskPriority = "none";
-  let assignee: ProjectMember | null = null;
-  let unknownAssignee: string | null = null;
+  const assignees: ProjectMember[] = [];
+  const seen = new Set<string>();
+  const unknownAssignees: string[] = [];
 
   // `!high` → priority (strip the token).
   const titleNoPriority = raw.replace(/(^|\s)!([a-z]+)\b/gi, (m, pre, tok) => {
@@ -86,35 +114,62 @@ function parseDraft(raw: string, members: ProjectMember[]): ParsedDraft {
     return m; // unknown token — leave it in the title
   });
 
-  // `@name` → assignee (strip the token).
+  // `@name` → assignee(s) (strip each matched token).
   const title = titleNoPriority
     .replace(/(^|\s)@([\w.-]+)\b/g, (m, pre, tok) => {
-      const lower = tok.toLowerCase();
-      const match = members.find((mem) => {
-        const name = mem.userName.toLowerCase();
-        const first = name.split(/\s+/)[0];
-        const collapsed = name.replace(/\s+/g, "");
-        return first === lower || collapsed === lower || name === lower;
-      });
+      const match = matchMember(tok, members);
       if (match) {
-        assignee = match;
+        if (!seen.has(match.userId)) {
+          seen.add(match.userId);
+          assignees.push(match);
+        }
         return pre;
       }
-      unknownAssignee = tok;
+      if (!unknownAssignees.includes(tok)) unknownAssignees.push(tok);
       return m;
     })
     .replace(/\s{2,}/g, " ")
     .trim();
 
-  return { title, priority, assignee, unknownAssignee };
+  return { title, priority, assignees, unknownAssignees };
+}
+
+/* ------------------------------------------------------------------ */
+/* Active-token detection (the `@…` / `!…` word under the caret)        */
+/* ------------------------------------------------------------------ */
+
+type ActiveToken =
+  | { kind: "assignee"; query: string; start: number }
+  | { kind: "priority"; query: string; start: number }
+  | null;
+
+/**
+ * Find the `@token` or `!token` immediately left of the caret (no trailing
+ * space). Returns its kind, the typed query and the position of the trigger
+ * char so it can be replaced on pick.
+ */
+function activeToken(text: string, caret: number): ActiveToken {
+  const upto = text.slice(0, caret);
+  const at = /(?:^|\s)@([\w.-]*)$/.exec(upto);
+  if (at) {
+    return { kind: "assignee", query: at[1], start: caret - at[1].length - 1 };
+  }
+  const bang = /(?:^|\s)!([a-z]*)$/i.exec(upto);
+  if (bang) {
+    return { kind: "priority", query: bang[1], start: caret - bang[1].length - 1 };
+  }
+  return null;
 }
 
 /**
  * Inline quick-add (spec §4.2). A single text input that parses `!priority` and
- * `@assignee` tokens as you type — live chips preview the parsed priority glyph,
- * assignee avatar and (optionally) a due date set via a small calendar popover.
- * Enter creates the task optimistically; the input clears and stays focused for
- * rapid entry. Errors roll back via the mutation and surface a toast.
+ * MULTIPLE `@assignee` tokens as you type, with a live autocomplete dropdown:
+ * typing `@` lists project members (filtered by the query) and `!` lists
+ * priorities; ↑/↓ move, Enter/Tab pick, Esc dismisses. Picking completes the
+ * token in the text so it reads back and is stripped by parsing. Live chips
+ * preview the parsed priority glyph and an avatar stack of every assignee plus
+ * an optional due date. Enter creates the task optimistically; the input clears
+ * and stays focused for rapid entry. Errors roll back and surface a toast.
  */
 export function TaskQuickAdd({
   projectId,
@@ -125,6 +180,8 @@ export function TaskQuickAdd({
   const [raw, setRaw] = React.useState("");
   const [due, setDue] = React.useState<Date | null>(null);
   const [dateOpen, setDateOpen] = React.useState(false);
+  const [token, setToken] = React.useState<ActiveToken>(null);
+  const [highlight, setHighlight] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const { data: members = [] } = useProjectMembers(projectId);
@@ -136,6 +193,86 @@ export function TaskQuickAdd({
     [raw, members],
   );
 
+  // Suggestions for the active token (members or priorities), filtered live.
+  const suggestions = React.useMemo<
+    { id: string; label: string; node: React.ReactNode }[]
+  >(() => {
+    if (!token) return [];
+    if (token.kind === "assignee") {
+      const q = token.query.toLowerCase();
+      return members
+        .filter((m) => m.userName.toLowerCase().includes(q))
+        .slice(0, 6)
+        .map((m) => ({
+          id: m.userId,
+          label: m.userName,
+          node: (
+            <span className="flex items-center gap-2">
+              <Avatar size="sm">
+                <AvatarFallback className="text-[10px]">
+                  {initials(m.userName)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{m.userName}</span>
+            </span>
+          ),
+        }));
+    }
+    const q = token.query.toLowerCase();
+    return PRIORITY_SUGGESTIONS.filter((p) =>
+      p.value.toLowerCase().includes(q) || p.label.toLowerCase().includes(q),
+    ).map((p) => ({
+      id: p.value,
+      label: p.label,
+      node: (
+        <span className="flex items-center gap-2">
+          <PriorityIcon priority={p.value} hideLabel />
+          <span className="truncate">{p.label}</span>
+        </span>
+      ),
+    }));
+  }, [token, members]);
+
+  const dropdownOpen = !!token && suggestions.length > 0;
+
+  React.useEffect(() => setHighlight(0), [token?.kind, token?.query]);
+
+  /** Recompute the active token from the live input value + caret. */
+  function syncToken(text: string, caret: number) {
+    setToken(activeToken(text, caret));
+  }
+
+  /** Replace the active token's text with the picked completion + a trailing space. */
+  function applyCompletion(start: number, completion: string) {
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? raw.length;
+    const before = raw.slice(0, start);
+    const after = raw.slice(caret);
+    const next = `${before}${completion} ${after}`;
+    setRaw(next);
+    setToken(null);
+    // Restore the caret just past the inserted token on the next frame.
+    requestAnimationFrame(() => {
+      const pos = before.length + completion.length + 1;
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+    });
+  }
+
+  /** Commit the highlighted suggestion (member → `@name `, priority → `!label `). */
+  function choose(index: number) {
+    if (!token) return;
+    const pick = suggestions[index];
+    if (!pick) return;
+    if (token.kind === "assignee") {
+      const member = members.find((m) => m.userId === pick.id);
+      if (!member) return;
+      applyCompletion(token.start, `@${memberToken(member.userName)}`);
+    } else {
+      applyCompletion(token.start, `!${pick.id}`);
+    }
+  }
+
   const canSubmit = parsed.title.length > 0 && !createTask.isPending;
 
   const submit = React.useCallback(() => {
@@ -146,7 +283,7 @@ export function TaskQuickAdd({
         status: defaultStatus,
         milestoneId: defaultMilestoneId,
         priority: parsed.priority,
-        assigneeId: parsed.assignee?.userId ?? null,
+        assigneeIds: parsed.assignees.map((a) => a.userId),
         dueDate: due ? format(due, "yyyy-MM-dd") : null,
       },
       {
@@ -159,13 +296,14 @@ export function TaskQuickAdd({
     // Optimistic UX: clear immediately and keep focus for the next task.
     setRaw("");
     setDue(null);
+    setToken(null);
     inputRef.current?.focus();
   }, [parsed, due, createTask, defaultStatus, defaultMilestoneId]);
 
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/40",
+        "relative flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/40",
         className,
       )}
     >
@@ -181,19 +319,103 @@ export function TaskQuickAdd({
         ref={inputRef}
         value={raw}
         aria-label="Add a task"
-        placeholder="Add a task…  try !high  @name"
-        onChange={(e) => setRaw(e.target.value)}
+        placeholder="Add a task…  !priority  @assignee"
+        role="combobox"
+        aria-expanded={dropdownOpen}
+        aria-autocomplete="list"
+        aria-controls="quick-add-suggestions"
+        aria-activedescendant={
+          dropdownOpen ? `quick-add-option-${highlight}` : undefined
+        }
+        onChange={(e) => {
+          setRaw(e.target.value);
+          syncToken(e.target.value, e.target.selectionStart ?? 0);
+        }}
+        onClick={(e) =>
+          syncToken(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+        }
+        onKeyUp={(e) => {
+          // Arrow keys / Home / End move the caret — re-detect the token.
+          if (
+            e.key === "ArrowLeft" ||
+            e.key === "ArrowRight" ||
+            e.key === "Home" ||
+            e.key === "End"
+          ) {
+            syncToken(e.currentTarget.value, e.currentTarget.selectionStart ?? 0);
+          }
+        }}
+        onBlur={() => setToken(null)}
         onKeyDown={(e) => {
+          if (dropdownOpen) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlight((h) => (h + 1) % suggestions.length);
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlight(
+                (h) => (h - 1 + suggestions.length) % suggestions.length,
+              );
+              return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+              e.preventDefault();
+              choose(highlight);
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setToken(null);
+              return;
+            }
+          }
           if (e.key === "Enter") {
             e.preventDefault();
             submit();
           } else if (e.key === "Escape") {
             setRaw("");
             setDue(null);
+            setToken(null);
           }
         }}
         className="h-9 min-w-40 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
       />
+
+      {/* @/! autocomplete dropdown — anchored under the input. */}
+      {dropdownOpen && (
+        <ul
+          id="quick-add-suggestions"
+          role="listbox"
+          aria-label={
+            token?.kind === "assignee" ? "Assign a teammate" : "Set a priority"
+          }
+          className="absolute top-full left-0 z-30 mt-1 max-h-56 w-64 overflow-auto rounded-lg border bg-popover p-1 shadow-md"
+        >
+          {suggestions.map((s, i) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                id={`quick-add-option-${i}`}
+                role="option"
+                aria-selected={i === highlight}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  choose(i);
+                }}
+                onMouseEnter={() => setHighlight(i)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150",
+                  i === highlight ? "bg-accent/15 text-foreground" : "",
+                )}
+              >
+                {s.node}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Parsed-token preview chips. */}
       <div className="flex shrink-0 items-center gap-1.5">
@@ -206,17 +428,26 @@ export function TaskQuickAdd({
             {PRIORITY_META[parsed.priority].label}
           </span>
         )}
-        {parsed.assignee && (
+        {parsed.assignees.length > 0 && (
           <span
             className="inline-flex items-center"
-            title={`Assignee: ${parsed.assignee.userName}`}
+            title={`Assignees: ${parsed.assignees
+              .map((a) => a.userName)
+              .join(", ")}`}
           >
-            <AssigneeAvatar name={parsed.assignee.userName} size="sm" />
+            <AssigneeStack
+              assignees={parsed.assignees.map((a) => ({
+                userId: a.userId,
+                name: a.userName,
+              }))}
+              size="sm"
+              max={3}
+            />
           </span>
         )}
-        {parsed.unknownAssignee && !parsed.assignee && (
+        {parsed.unknownAssignees.length > 0 && (
           <span className="text-xs text-muted-foreground">
-            @{parsed.unknownAssignee}?
+            @{parsed.unknownAssignees[0]}?
           </span>
         )}
 

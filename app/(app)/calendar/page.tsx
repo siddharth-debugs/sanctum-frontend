@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CalendarDays, ArrowRight } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -19,6 +20,7 @@ import { useClients } from "@/hooks/use-clients";
 import { usePosts } from "@/hooks/use-posts";
 
 export default function CrossClientCalendarPage() {
+  const router = useRouter();
   const { data: clients } = useClients();
   const activeClients = (clients ?? []).filter((c) => c.status === "active");
   // Always a string so the Select stays controlled (empty = nothing picked yet).
@@ -58,7 +60,13 @@ export default function CrossClientCalendarPage() {
 
       {clientId ? (
         <>
-          <ContentCalendar posts={posts ?? []} />
+          <ContentCalendar
+            clientId={clientId}
+            posts={posts ?? []}
+            onPostClick={(p) =>
+              router.push(`/clients/${clientId}/calendar?post=${p.id}`)
+            }
+          />
           <div className="flex justify-end">
             <Button asChild variant="outline">
               <Link href={`/clients/${clientId}/calendar`}>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { UserPlus, Users, Search } from "lucide-react";
+import { UserPlus, Users, Search, LayoutGrid, Rows3 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
 import { InviteMemberSheet } from "@/components/app/invite-member-sheet";
@@ -11,6 +11,11 @@ import {
   InactiveChip,
   UtilizationBar,
 } from "@/components/app/team-bits";
+import {
+  PresenceDot,
+  PresenceSummary,
+} from "@/components/app/team-presence";
+import { WorkloadChips, WorkloadBar } from "@/components/app/team-workload";
 import { GlassCard } from "@/components/app/glass-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +29,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -34,11 +47,24 @@ import {
 } from "@/components/ui/select";
 import { useTeam } from "@/hooks/use-team";
 import { useDisclosure } from "@/hooks/use-disclosure";
-import { initials } from "@/lib/utils";
+import { useCan } from "../session-context";
+import { initials, cn } from "@/lib/utils";
 import { fmtHours } from "@/lib/constants/team-options";
 import type { TeamMember } from "@/lib/api/types";
 
 const ALL = "all";
+
+type SortKey = "name" | "tasks" | "hours";
+type ViewMode = "grid" | "table";
+
+const SORTERS: Record<SortKey, (a: TeamMember, b: TeamMember) => number> = {
+  name: (a, b) =>
+    (a.fullName ?? a.email).localeCompare(b.fullName ?? b.email, undefined, {
+      sensitivity: "base",
+    }),
+  tasks: (a, b) => (b.activeTaskCount ?? 0) - (a.activeTaskCount ?? 0),
+  hours: (a, b) => (b.loggedMinutesThisWeek ?? 0) - (a.loggedMinutesThisWeek ?? 0),
+};
 
 /** Avatar with a pine→brass gradient fallback. */
 function MemberAvatar({ member, size = "size-11" }: { member: TeamMember; size?: string }) {
@@ -63,10 +89,16 @@ function MemberCard({ member }: { member: TeamMember }) {
   return (
     <Link
       href={`/team/${member.id}`}
-      className="group block rounded-xl border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-sm"
+      className="group block rounded-xl border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="flex items-start gap-3">
-        <MemberAvatar member={member} />
+        <div className="relative">
+          <MemberAvatar member={member} />
+          {/* Presence dot anchored to the avatar. */}
+          <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full bg-card">
+            <PresenceDot presence={member.presence} />
+          </span>
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -79,27 +111,91 @@ function MemberCard({ member }: { member: TeamMember }) {
             </div>
             {disabled && <InactiveChip />}
           </div>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-2">
             <RoleBadge role={member.role} label={member.roleName} />
+            {member.presence === "in" && (
+              <PresenceDot presence="in" showLabel />
+            )}
           </div>
         </div>
       </div>
 
-      <p className="mt-4 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{member.activeTaskCount}</span>{" "}
-        {member.activeTaskCount === 1 ? "task" : "tasks"} ·{" "}
-        <span className="font-medium text-foreground">{member.projectCount}</span>{" "}
-        {member.projectCount === 1 ? "project" : "projects"}
-      </p>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <WorkloadChips member={member} />
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          {member.projectCount}{" "}
+          {member.projectCount === 1 ? "project" : "projects"}
+        </span>
+      </div>
 
       <div className="mt-3 space-y-1.5">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Utilization</span>
           <span className="font-semibold tabular-nums">{pct}%</span>
         </div>
-        <UtilizationBar pct={pct} />
+        <UtilizationBar pct={pct} tintByLoad />
       </div>
     </Link>
+  );
+}
+
+/** Compact table row alternative to the card grid. */
+function MemberTable({ members }: { members: TeamMember[] }) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-[11px] uppercase tracking-wide">Member</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">Role</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">Today</TableHead>
+              <TableHead className="text-right text-[11px] uppercase tracking-wide">Tasks</TableHead>
+              <TableHead className="text-right text-[11px] uppercase tracking-wide">This week</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">Capacity</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {members.map((m) => {
+              const name = m.fullName ?? m.email;
+              return (
+                <TableRow key={m.id} className="cursor-pointer">
+                  <TableCell>
+                    <Link
+                      href={`/team/${m.id}`}
+                      className="flex items-center gap-3"
+                    >
+                      <MemberAvatar member={m} size="size-9" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {m.designation || m.email}
+                        </p>
+                      </div>
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <RoleBadge role={m.role} label={m.roleName} />
+                  </TableCell>
+                  <TableCell>
+                    <PresenceDot presence={m.presence} showLabel />
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-semibold tabular-nums">
+                    {m.activeTaskCount}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {fmtHours(m.loggedMinutesThisWeek)}
+                  </TableCell>
+                  <TableCell className="w-40">
+                    <WorkloadBar member={m} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -107,12 +203,16 @@ function DirectoryTab({ onInvite }: { onInvite: () => void }) {
   const [search, setSearch] = React.useState("");
   const [role, setRole] = React.useState(ALL);
   const [activeOnly, setActiveOnly] = React.useState(false);
+  const [sort, setSort] = React.useState<SortKey>("name");
+  const [view, setView] = React.useState<ViewMode>("grid");
 
+  const { can } = useCan();
+  const canManage = can("team", "manage");
   const { data, isLoading, error } = useTeam();
 
   const members = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (data ?? []).filter((m) => {
+    const filtered = (data ?? []).filter((m) => {
       if (role !== ALL && m.role !== role) return false;
       if (activeOnly && m.status !== "active") return false;
       if (q) {
@@ -121,11 +221,17 @@ function DirectoryTab({ onInvite }: { onInvite: () => void }) {
       }
       return true;
     });
-  }, [data, search, role, activeOnly]);
+    return filtered.sort(SORTERS[sort]);
+  }, [data, search, role, activeOnly, sort]);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      {/* Presence summary */}
+      {!isLoading && !error && (data?.length ?? 0) > 0 && (
+        <PresenceSummary members={data ?? []} />
+      )}
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -133,10 +239,11 @@ function DirectoryTab({ onInvite }: { onInvite: () => void }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or email…"
             className="pl-9"
+            aria-label="Search team members"
           />
         </div>
         <Select value={role} onValueChange={setRole}>
-          <SelectTrigger className="w-full sm:w-44">
+          <SelectTrigger className="w-full lg:w-40" aria-label="Filter by role">
             <SelectValue placeholder="Role" />
           </SelectTrigger>
           <SelectContent>
@@ -146,22 +253,65 @@ function DirectoryTab({ onInvite }: { onInvite: () => void }) {
             <SelectItem value="member">Member</SelectItem>
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2 rounded-lg border px-3 py-2 sm:py-0 sm:h-9">
-          <Switch
-            id="active-only"
-            checked={activeOnly}
-            onCheckedChange={setActiveOnly}
-          />
-          <Label htmlFor="active-only" className="cursor-pointer whitespace-nowrap text-sm">
-            Active only
-          </Label>
+        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+          <SelectTrigger className="w-full lg:w-48" aria-label="Sort members">
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name">Sort: Name</SelectItem>
+            <SelectItem value="tasks">Sort: Most active tasks</SelectItem>
+            <SelectItem value="hours">Sort: Most hours this week</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 items-center gap-2 rounded-lg border px-3">
+            <Switch
+              id="active-only"
+              checked={activeOnly}
+              onCheckedChange={setActiveOnly}
+            />
+            <Label htmlFor="active-only" className="cursor-pointer whitespace-nowrap text-sm">
+              Active only
+            </Label>
+          </div>
+          {/* View toggle */}
+          <div className="flex h-9 items-center rounded-lg border p-0.5" role="group" aria-label="View mode">
+            <button
+              type="button"
+              aria-pressed={view === "grid"}
+              aria-label="Card view"
+              onClick={() => setView("grid")}
+              className={cn(
+                "grid size-8 place-items-center rounded-md transition-colors",
+                view === "grid"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "table"}
+              aria-label="Table view"
+              onClick={() => setView("table")}
+              className={cn(
+                "grid size-8 place-items-center rounded-md transition-colors",
+                view === "table"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <Rows3 className="size-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
+            <Skeleton key={i} className="h-44 rounded-xl" />
           ))}
         </div>
       ) : error ? (
@@ -181,10 +331,14 @@ function DirectoryTab({ onInvite }: { onInvite: () => void }) {
                 : "Invite your first teammate to start delegating work."}
             </p>
           </div>
-          <Button onClick={onInvite}>
-            <UserPlus className="size-4" /> Invite member
-          </Button>
+          {canManage && (
+            <Button onClick={onInvite}>
+              <UserPlus className="size-4" /> Invite member
+            </Button>
+          )}
         </div>
+      ) : view === "table" ? (
+        <MemberTable members={members} />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {members.map((m) => (
@@ -283,6 +437,8 @@ function UtilizationTab() {
 
 export default function TeamPage() {
   const inviteSheet = useDisclosure();
+  const { can } = useCan();
+  const canManage = can("team", "manage");
 
   return (
     <div className="space-y-6">
@@ -295,9 +451,11 @@ export default function TeamPage() {
         title="Team"
         description="Manage your members and track utilization."
         actions={
-          <Button onClick={() => inviteSheet.onOpen()}>
-            <UserPlus className="size-4" /> Invite Member
-          </Button>
+          canManage ? (
+            <Button onClick={() => inviteSheet.onOpen()}>
+              <UserPlus className="size-4" /> Invite Member
+            </Button>
+          ) : undefined
         }
       />
 

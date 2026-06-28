@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import { useTheme } from "next-themes";
-import { Settings, Sun, Moon } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Settings, Sun, Moon, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -11,13 +14,113 @@ import { UsageLimits } from "@/components/app/usage-limits";
 import { RolePermissionsMatrix } from "@/components/app/role-permissions-matrix";
 import { CustomRolesManager } from "@/components/app/custom-roles-manager";
 import { AttendanceSettings } from "@/components/app/attendance-settings";
+import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { TextField } from "@/components/fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession, useCan } from "../session-context";
 import { useUpdateAgency } from "@/hooks/use-agency";
+import { useChangePassword } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword: z.string().min(8, "At least 8 characters"),
+    confirmPassword: z.string().min(8, "At least 8 characters"),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+type ChangePasswordValues = z.infer<typeof changePasswordSchema>;
+
+/** Change-password card (General tab). Maps a 400 to the current-password field. */
+function ChangePasswordCard() {
+  const changePassword = useChangePassword();
+  const form = useForm<ChangePasswordValues>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
+
+  const onSubmit = (v: ChangePasswordValues) => {
+    changePassword.mutate(
+      { currentPassword: v.currentPassword, newPassword: v.newPassword },
+      {
+        onSuccess: () => {
+          toast.success("Password updated");
+          form.reset();
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 400) {
+            form.setError("currentPassword", {
+              message: "Your current password is incorrect",
+            });
+            return;
+          }
+          toast.error(
+            err instanceof ApiError ? err.message : "Couldn't update password",
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <GlassCard className="p-6">
+      <h2 className="font-display text-lg font-semibold">Change password</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Use at least 8 characters. You&apos;ll stay signed in on this device.
+      </p>
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="max-w-md space-y-4"
+        >
+          <TextField
+            control={form.control}
+            name="currentPassword"
+            label="Current password"
+            type="password"
+            placeholder="••••••••"
+            autoComplete="current-password"
+            required
+          />
+          <TextField
+            control={form.control}
+            name="newPassword"
+            label="New password"
+            type="password"
+            placeholder="••••••••"
+            autoComplete="new-password"
+            required
+          />
+          <TextField
+            control={form.control}
+            name="confirmPassword"
+            label="Confirm new password"
+            type="password"
+            placeholder="••••••••"
+            autoComplete="new-password"
+            required
+          />
+          <div className="flex justify-end">
+            <Button type="submit" disabled={changePassword.isPending}>
+              <KeyRound className="size-4" />
+              {changePassword.isPending ? "Updating…" : "Update password"}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </GlassCard>
+  );
+}
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -104,6 +207,8 @@ export default function SettingsPage() {
           </Button>
         </div>
       </GlassCard>
+
+      <ChangePasswordCard />
 
       <section className="space-y-3">
         <h2 className="font-display text-lg font-semibold">Usage &amp; limits</h2>

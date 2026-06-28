@@ -15,6 +15,7 @@ import { ThemeSwitcher } from "@/components/app/theme-switcher";
 import { ActiveTimerBar } from "@/components/app/active-timer-bar";
 import { AiChatLauncher, AiChatButton } from "@/components/app/ai-chat-launcher";
 import { NotificationBell } from "@/components/app/notification-bell";
+import { AttendanceCheckIn } from "@/components/app/attendance-check-in";
 import { NoModuleAccess } from "@/components/app/no-module-access";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APP_NAV } from "@/lib/nav";
@@ -26,7 +27,7 @@ import { useUnreadCount } from "@/hooks/use-messages";
 import { useNotificationStream } from "@/hooks/use-notifications";
 import { refreshSession } from "@/lib/api/client";
 import { SocketProvider } from "@/lib/socket";
-import { SessionProvider } from "./session-context";
+import { SessionProvider, useSession } from "./session-context";
 
 /**
  * Keep the session warm: the access token lives 15 min, so refresh every 10 min
@@ -119,7 +120,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const me = useMe();
+  // Read the session from the provider (AppShell guarantees it's resolved
+  // before mounting Shell) rather than re-deriving it from the query, which
+  // could momentarily be undefined during a refetch/reset and crash the shell.
+  const session = useSession();
   const pathname = usePathname();
   const logout = useLogout();
   const { data: clients } = useClients();
@@ -128,7 +132,6 @@ function Shell({ children }: { children: React.ReactNode }) {
   useSessionKeepAlive();
   const activeClients = (clients ?? []).filter((c) => c.status === "active");
 
-  const session = me.data!;
   const permissions = session.permissions;
 
   // Inject live counts into the static nav, then drop any module the user can't
@@ -185,6 +188,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <span className="font-display text-sm font-semibold">Sanctum</span>
           <div className="ml-auto flex items-center gap-2">
             <ActiveTimerBar />
+            <AttendanceCheckIn />
             <AiChatButton />
             <NotificationBell />
             <ThemeSwitcher />

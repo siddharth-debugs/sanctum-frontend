@@ -6,7 +6,6 @@ import {
   FolderKanban,
   Settings,
   TrendingUp,
-  FileText,
   Files,
   Receipt,
   MessagesSquare,
@@ -43,7 +42,6 @@ export const APP_NAV: SidebarNavSection[] = [
     label: "Finance",
     items: [
       { title: "Overview", url: "/finance", icon: TrendingUp, module: "finance" },
-      { title: "Invoices", url: "/finance/invoices", icon: FileText, module: "finance" },
       { title: "Expenses", url: "/finance/expenses", icon: Receipt, module: "finance" },
     ],
   },

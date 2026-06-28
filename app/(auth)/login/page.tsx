@@ -61,15 +61,25 @@ export default function LoginPage() {
             autoComplete="email"
             required
           />
-          <TextField
-            control={form.control}
-            name="password"
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="current-password"
-            required
-          />
+          <div className="space-y-1.5">
+            <TextField
+              control={form.control}
+              name="password"
+              label="Password"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+            <div className="text-right">
+              <Link
+                href="/forgot-password"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          </div>
           <Button
             type="submit"
             className="w-full"

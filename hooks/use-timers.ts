@@ -4,7 +4,12 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import type { RunningTimer, StopTimerResult } from "@/lib/api/types";
+import type {
+  RunningTimer,
+  StopTimerResult,
+  TaskTimeLogs,
+  TimeLogUpdate,
+} from "@/lib/api/types";
 
 /* ------------------------------------------------------------------ */
 /* Formatting helpers                                                  */
@@ -118,6 +123,7 @@ export interface StartTimerInput {
 function invalidateTimerSurfaces(
   qc: ReturnType<typeof useQueryClient>,
   projectId?: string,
+  taskId?: string | null,
 ) {
   qc.invalidateQueries({ queryKey: queryKeys.activeTimer });
   qc.invalidateQueries({ queryKey: ["timers"] });
@@ -127,6 +133,11 @@ function invalidateTimerSurfaces(
     qc.invalidateQueries({ queryKey: queryKeys.projectOverview(projectId) });
     qc.invalidateQueries({ queryKey: queryKeys.projectTimeSummary(projectId) });
     qc.invalidateQueries({ queryKey: queryKeys.projectTimeLogs(projectId) });
+    if (taskId) {
+      qc.invalidateQueries({
+        queryKey: queryKeys.projectTaskTimeLogs(projectId, taskId),
+      });
+    }
   } else {
     // No project context (e.g. stopping from the global pill) — refresh all.
     qc.invalidateQueries({ queryKey: ["projects"] });
@@ -140,7 +151,11 @@ export function useStartTimer() {
     mutationFn: (input: StartTimerInput) =>
       api<RunningTimer>("/timers/start", { method: "POST", body: input }),
     onSuccess: (timer, vars) =>
-      invalidateTimerSurfaces(qc, vars.projectId ?? timer.projectId),
+      invalidateTimerSurfaces(
+        qc,
+        vars.projectId ?? timer.projectId,
+        vars.taskId ?? timer.taskId,
+      ),
   });
 }
 
@@ -149,6 +164,52 @@ export function useStopTimer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api<StopTimerResult>("/timers/stop", { method: "POST" }),
-    onSuccess: (res) => invalidateTimerSurfaces(qc, res.timeLog.projectId ?? undefined),
+    onSuccess: (res) =>
+      invalidateTimerSurfaces(
+        qc,
+        res.timeLog.projectId ?? undefined,
+        res.timeLog.taskId,
+      ),
+  });
+}
+
+/**
+ * GET /projects/:id/tasks/:taskId/time-logs — the task's logged-time timeline
+ * plus a summed total and live-timer count. Polls modestly so a teammate's
+ * finished session appears without a manual refresh.
+ */
+export function useTaskTimeLogs(
+  projectId: string,
+  taskId: string | null | undefined,
+) {
+  return useQuery<TaskTimeLogs>({
+    queryKey: queryKeys.projectTaskTimeLogs(projectId, taskId ?? ""),
+    queryFn: () =>
+      api<TaskTimeLogs>(`/projects/${projectId}/tasks/${taskId}/time-logs`),
+    enabled: !!projectId && !!taskId,
+    refetchInterval: 60_000,
+  });
+}
+
+/** PATCH /timers/logs/:logId — edit a logged entry's note. */
+export function useUpdateTimeLogNote(
+  projectId: string,
+  taskId: string | null | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { logId: string; note: string | null }) =>
+      api<TimeLogUpdate>(`/timers/logs/${vars.logId}`, {
+        method: "PATCH",
+        body: { note: vars.note },
+      }),
+    onSuccess: () => {
+      if (taskId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.projectTaskTimeLogs(projectId, taskId),
+        });
+      }
+      qc.invalidateQueries({ queryKey: queryKeys.projectTimeLogs(projectId) });
+    },
   });
 }

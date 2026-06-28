@@ -23,7 +23,7 @@ import {
 import {
   StatusSelect,
   PrioritySelect,
-  AssigneeAvatar,
+  AssigneeStack,
   EstimateInput,
   LabelMultiSelect,
 } from "@/components/app/tasks";
@@ -203,8 +203,8 @@ function InlineDate({
 }
 
 /* ------------------------------------------------------------------ */
-/* Assignee combobox — searchable people picker showing avatars, backed  */
-/* by the team list. "" / null = Unassigned.                             */
+/* Assignee multi-select — searchable people picker showing an avatar    */
+/* stack; clicking a member toggles them. Empty set = Unassigned.        */
 /* ------------------------------------------------------------------ */
 
 export interface AssigneeOption {
@@ -212,19 +212,36 @@ export interface AssigneeOption {
   name: string;
 }
 
-function AssigneeCombobox({
+function AssigneeMultiSelect({
   value,
   options,
   onChange,
   disabled,
 }: {
-  value: string | null;
+  /** Selected user ids (in display order). */
+  value: string[];
   options: AssigneeOption[];
-  onChange: (id: string | null) => void;
+  /** Replace the whole selection (`[]` clears all). */
+  onChange: (ids: string[]) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
-  const selected = options.find((o) => o.id === value) ?? null;
+  const selectedSet = React.useMemo(() => new Set(value), [value]);
+  const selectedPeople = React.useMemo(
+    () =>
+      value
+        .map((id) => options.find((o) => o.id === id))
+        .filter((o): o is AssigneeOption => !!o)
+        .map((o) => ({ userId: o.id, name: o.name })),
+    [value, options],
+  );
+  const hasSelection = selectedPeople.length > 0;
+
+  function toggle(id: string) {
+    onChange(
+      selectedSet.has(id) ? value.filter((v) => v !== id) : [...value, id],
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -234,21 +251,32 @@ function AssigneeCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          aria-label="Assignee"
+          aria-label={
+            hasSelection
+              ? `Assignees: ${selectedPeople.map((p) => p.name).join(", ")}`
+              : "Assignees: unassigned"
+          }
           disabled={disabled}
           className="h-8 w-full justify-between gap-2 font-normal"
         >
-          <AssigneeAvatar name={selected?.name ?? null} showName />
-          {selected ? (
+          {hasSelection ? (
+            <AssigneeStack assignees={selectedPeople} max={3} showName />
+          ) : (
+            <span className="inline-flex items-center gap-2 text-muted-foreground">
+              <AssigneeStack assignees={[]} showName />
+            </span>
+          )}
+          {hasSelection ? (
             <span
               role="button"
               tabIndex={-1}
-              aria-label="Clear assignee"
+              aria-label="Unassign all"
+              title="Unassign all"
               className="grid size-5 shrink-0 place-items-center rounded-sm opacity-60 transition-opacity hover:opacity-100"
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onChange(null);
+                onChange([]);
               }}
             >
               <X className="size-3.5" />
@@ -267,26 +295,46 @@ function AssigneeCombobox({
           <CommandList>
             <CommandEmpty>No matching people.</CommandEmpty>
             <CommandGroup>
-              {options.map((o) => (
+              {options.map((o) => {
+                const checked = selectedSet.has(o.id);
+                return (
+                  <CommandItem
+                    key={o.id}
+                    value={o.name}
+                    // Keep the popover open so multiple can be picked in a row.
+                    onSelect={() => toggle(o.id)}
+                    aria-selected={checked}
+                    className="gap-2"
+                  >
+                    <Check
+                      className={cn(
+                        "size-4",
+                        checked ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <AssigneeStack
+                      assignees={[{ userId: o.id, name: o.name }]}
+                      showName
+                    />
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+            {hasSelection && (
+              <CommandGroup className="border-t">
                 <CommandItem
-                  key={o.id}
-                  value={o.name}
+                  value="__unassign_all__"
                   onSelect={() => {
-                    onChange(o.id === value ? null : o.id);
+                    onChange([]);
                     setOpen(false);
                   }}
-                  className="gap-2"
+                  className="gap-2 text-muted-foreground"
                 >
-                  <Check
-                    className={cn(
-                      "size-4",
-                      value === o.id ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <AssigneeAvatar name={o.name} showName />
+                  <X className="size-4" />
+                  Unassign all
                 </CommandItem>
-              ))}
-            </CommandGroup>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -396,7 +444,8 @@ export interface TaskPropertiesProps {
   projectId: string;
   status: ProjectTaskStatus;
   priority: ProjectTaskPriority;
-  assigneeId: string | null;
+  /** Selected assignee user ids (controlled). */
+  assigneeIds: string[];
   assigneeOptions: AssigneeOption[];
   startDate: string | null;
   dueDate: string | null;
@@ -408,7 +457,8 @@ export interface TaskPropertiesProps {
   disabled?: boolean;
   onStatusChange: (status: ProjectTaskStatus) => void;
   onPriorityChange: (priority: ProjectTaskPriority) => void;
-  onAssigneeChange: (id: string | null) => void;
+  /** Replace the whole assignee set (`[]` clears all). */
+  onAssigneesChange: (ids: string[]) => void;
   onStartDateChange: (iso: string | null) => void;
   onDueDateChange: (iso: string | null) => void;
   onEstimateChange: (minutes: number | null) => void;
@@ -427,7 +477,7 @@ export function TaskProperties({
   projectId,
   status,
   priority,
-  assigneeId,
+  assigneeIds,
   assigneeOptions,
   startDate,
   dueDate,
@@ -438,7 +488,7 @@ export function TaskProperties({
   disabled,
   onStatusChange,
   onPriorityChange,
-  onAssigneeChange,
+  onAssigneesChange,
   onStartDateChange,
   onDueDateChange,
   onEstimateChange,
@@ -466,11 +516,11 @@ export function TaskProperties({
         />
       </PropertyRow>
 
-      <PropertyRow label="Assignee">
-        <AssigneeCombobox
-          value={assigneeId}
+      <PropertyRow label="Assignees">
+        <AssigneeMultiSelect
+          value={assigneeIds}
           options={assigneeOptions}
-          onChange={onAssigneeChange}
+          onChange={onAssigneesChange}
           disabled={disabled}
         />
       </PropertyRow>

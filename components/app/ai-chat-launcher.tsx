@@ -7,6 +7,9 @@ import {
   SendHorizontal,
   Loader2,
   MessageSquarePlus,
+  Copy,
+  Check,
+  Info,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,9 +18,34 @@ import { ComboboxStandalone } from "@/components/app/combobox-standalone";
 import { Markdown } from "@/components/app/markdown";
 import { useAiChat } from "@/hooks/use-ai";
 import { useProjects } from "@/hooks/use-projects";
+import { useClients } from "@/hooks/use-clients";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type { AiMessage } from "@/lib/api/types";
+
+/** Prompt-starter chips shown on an empty conversation. */
+const PROMPT_STARTERS: { label: string; prompt: string }[] = [
+  {
+    label: "Caption ideas",
+    prompt:
+      "Write 3 engaging Instagram caption options for a post about ",
+  },
+  {
+    label: "Content plan",
+    prompt:
+      "Suggest a one-week content plan (hook + format per day) for ",
+  },
+  {
+    label: "Repurpose",
+    prompt:
+      "Turn this Instagram caption into a LinkedIn post:\n\n",
+  },
+  {
+    label: "Summarize project",
+    prompt: "Summarize the current status and next steps for this project.",
+  },
+];
 
 // ---------------------------------------------------------------------------
 // A tiny module-level event bus so any component (hub card, nav, etc.) can
@@ -43,16 +71,17 @@ export function AiChatButton({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      aria-label="Open AI Assistant"
-      title="AI Assistant"
+      aria-label="Ask Sanctum AI"
+      title="Ask Sanctum AI"
       onClick={() => openAiChat()}
       className={cn(
-        "grid size-9 place-items-center rounded-md text-primary-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95",
+        "flex h-9 min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-primary-foreground transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95 sm:min-h-9",
         className,
       )}
       style={{ background: PINE_BRASS_GRADIENT_HEADER }}
     >
-      <Sparkles className="size-4" />
+      <Sparkles className="size-4 shrink-0" />
+      <span className="hidden sm:inline">Ask Sanctum AI</span>
     </button>
   );
 }
@@ -62,6 +91,8 @@ const PINE_BRASS_GRADIENT =
 
 interface ChatTurn extends AiMessage {
   id: string;
+  /** Set on assistant turns produced by the template fallback (no API key). */
+  fallback?: boolean;
 }
 
 /**
@@ -75,12 +106,15 @@ export function AiChatLauncher() {
   const [messages, setMessages] = React.useState<ChatTurn[]>([]);
   const [input, setInput] = React.useState("");
   const [projectId, setProjectId] = React.useState("");
+  const [clientId, setClientId] = React.useState("");
 
   const isMobile = useIsMobile();
   const chat = useAiChat();
   const { data: projects } = useProjects();
+  const { data: clients } = useClients();
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Subscribe to the global open bus.
   React.useEffect(() => {
@@ -102,49 +136,80 @@ export function AiChatLauncher() {
     () => (projects ?? []).map((p) => ({ label: p.name, value: p.id })),
     [projects],
   );
+  const clientOptions = React.useMemo(
+    () => (clients ?? []).map((c) => ({ label: c.name, value: c.id })),
+    [clients],
+  );
 
-  const send = React.useCallback(() => {
-    const text = input.trim();
-    if (!text || chat.isPending) return;
+  const sendText = React.useCallback(
+    (raw: string) => {
+      const text = raw.trim();
+      if (!text || chat.isPending) return;
 
-    const userTurn: ChatTurn = {
-      id: `u-${Date.now()}`,
-      role: "user",
-      content: text,
-    };
-    const history: AiMessage[] = [...messages, userTurn].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+      const userTurn: ChatTurn = {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content: text,
+      };
+      const history: AiMessage[] = [...messages, userTurn].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
 
-    setMessages((prev) => [...prev, userTurn]);
-    setInput("");
+      setMessages((prev) => [...prev, userTurn]);
+      setInput("");
 
-    chat.mutate(
-      { messages: history, projectId: projectId || undefined },
-      {
-        onSuccess: (res) => {
-          setMessages((prev) => [
-            ...prev,
-            { id: `a-${Date.now()}`, role: "assistant", content: res.reply },
-          ]);
+      chat.mutate(
+        {
+          messages: history,
+          projectId: projectId || undefined,
+          clientId: clientId || undefined,
         },
-        onError: (err) => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `e-${Date.now()}`,
-              role: "assistant",
-              content:
-                err instanceof Error
-                  ? `⚠️ ${err.message}`
-                  : "⚠️ Something went wrong. Please try again.",
-            },
-          ]);
+        {
+          onSuccess: (res) => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `a-${Date.now()}`,
+                role: "assistant",
+                content: res.reply,
+                fallback: res.source === "fallback",
+              },
+            ]);
+          },
+          onError: (err) => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `e-${Date.now()}`,
+                role: "assistant",
+                content:
+                  err instanceof Error
+                    ? `⚠️ ${err.message}`
+                    : "⚠️ Something went wrong. Please try again.",
+              },
+            ]);
+          },
         },
-      },
-    );
-  }, [input, chat, messages, projectId]);
+      );
+    },
+    [chat, messages, projectId, clientId],
+  );
+
+  const send = React.useCallback(() => sendText(input), [sendText, input]);
+
+  // Prompt-starter: prefill the composer and focus it (don't auto-send, so the
+  // user can complete the thought first).
+  const useStarter = React.useCallback((prompt: string) => {
+    setInput(prompt);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(prompt.length, prompt.length);
+      }
+    });
+  }, []);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -225,13 +290,21 @@ export function AiChatLauncher() {
             </Button>
           </div>
 
-          {/* Optional project grounding */}
-          <div className="shrink-0 border-b px-3 py-2">
+          {/* Optional grounding: client and/or project context */}
+          <div className="grid shrink-0 grid-cols-2 gap-2 border-b px-3 py-2">
+            <ComboboxStandalone
+              value={clientId}
+              onChange={setClientId}
+              options={clientOptions}
+              placeholder="Client context"
+              emptyText="No clients."
+              className="h-8 w-full text-xs"
+            />
             <ComboboxStandalone
               value={projectId}
               onChange={setProjectId}
               options={projectOptions}
-              placeholder="Ground in a project (optional)"
+              placeholder="Project context"
               emptyText="No projects."
               className="h-8 w-full text-xs"
             />
@@ -243,7 +316,7 @@ export function AiChatLauncher() {
             className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4"
           >
             {messages.length === 0 && !chat.isPending && (
-              <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
                 <span
                   className="grid size-12 place-items-center rounded-2xl text-primary-foreground"
                   style={{ background: PINE_BRASS_GRADIENT }}
@@ -259,6 +332,18 @@ export function AiChatLauncher() {
                     anything. Press Enter to send.
                   </p>
                 </div>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {PROMPT_STARTERS.map((s) => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onClick={() => useStarter(s.prompt)}
+                      className="rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-ring hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -270,11 +355,7 @@ export function AiChatLauncher() {
                   </div>
                 </div>
               ) : (
-                <div key={m.id} className="flex justify-start">
-                  <div className="max-w-[90%] rounded-2xl rounded-bl-sm border bg-card px-3.5 py-2 shadow-sm">
-                    <Markdown>{m.content}</Markdown>
-                  </div>
-                </div>
+                <AssistantBubble key={m.id} turn={m} />
               ),
             )}
 
@@ -294,6 +375,7 @@ export function AiChatLauncher() {
           <div className="shrink-0 border-t p-3">
             <div className="relative">
               <Textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
@@ -322,6 +404,53 @@ export function AiChatLauncher() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** An assistant chat bubble with copy-to-clipboard + a template-fallback note. */
+function AssistantBubble({ turn }: { turn: ChatTurn }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(turn.content);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Couldn't copy to clipboard");
+    }
+  };
+
+  return (
+    <div className="group flex justify-start">
+      <div className="max-w-[90%] space-y-1.5">
+        <div className="relative rounded-2xl rounded-bl-sm border bg-card px-3.5 py-2 shadow-sm">
+          <Markdown>{turn.content}</Markdown>
+          <button
+            type="button"
+            onClick={onCopy}
+            aria-label="Copy message"
+            title="Copy message"
+            className="absolute -right-1 -top-1 grid size-6 place-items-center rounded-md border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
+          >
+            {copied ? (
+              <Check className="size-3" aria-hidden />
+            ) : (
+              <Copy className="size-3" aria-hidden />
+            )}
+          </button>
+        </div>
+        {turn.fallback && (
+          <p className="flex items-start gap-1 px-1 text-[10px] leading-snug text-muted-foreground">
+            <Info className="mt-px size-2.5 shrink-0" aria-hidden />
+            <span>
+              Template reply — set a Gemini API key for live answers.
+            </span>
+          </p>
+        )}
+      </div>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import {
   ConversationEmpty,
 } from "@/components/app/messages/conversation-pane";
 
-type FilterTab = "all" | "open" | "awaiting";
+type FilterTab = "all" | "open" | "awaiting" | "closed";
 
 function matchesSearch(thread: ThreadSummary, q: string): boolean {
   if (!q) return true;
@@ -44,7 +44,13 @@ export default function MessagesPage() {
   const [newOpen, setNewOpen] = React.useState(false);
 
   const statusFilter: ThreadStatus | undefined =
-    tab === "open" ? "open" : tab === "awaiting" ? "awaiting" : undefined;
+    tab === "open"
+      ? "open"
+      : tab === "awaiting"
+        ? "awaiting"
+        : tab === "closed"
+          ? "closed"
+          : undefined;
 
   const { data: threads, isLoading } = useThreads({ status: statusFilter });
 
@@ -101,6 +107,9 @@ export default function MessagesPage() {
               </TabsTrigger>
               <TabsTrigger value="awaiting" className="flex-1">
                 Awaiting
+              </TabsTrigger>
+              <TabsTrigger value="closed" className="flex-1">
+                Resolved
               </TabsTrigger>
             </TabsList>
           </Tabs>

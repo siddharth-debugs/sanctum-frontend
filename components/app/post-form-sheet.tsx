@@ -9,6 +9,10 @@ import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/app/form-sheet";
 import {
+  AiCaptionHelper,
+  AiCaptionTrigger,
+} from "@/components/app/ai-caption-helper";
+import {
   SelectField,
   ComboboxField,
   DateField,
@@ -48,11 +52,14 @@ export function PostFormSheet({
   onOpenChange,
   clientId,
   post,
+  initialScheduledAt,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientId: string;
   post?: Post | null;
+  /** Prefill "Scheduled for" when creating a NEW post (ignored when editing). */
+  initialScheduledAt?: Date;
 }) {
   const isEdit = !!post;
   const qc = useQueryClient();
@@ -76,13 +83,41 @@ export function PostFormSheet({
       form.reset({
         postType: post?.postType ?? "reel",
         platforms: (post?.platforms as PostFormValues["platforms"]) ?? [],
-        scheduledAt: post?.scheduledAt ? new Date(post.scheduledAt) : undefined,
+        scheduledAt: post?.scheduledAt
+          ? new Date(post.scheduledAt)
+          : initialScheduledAt,
         caption: post?.caption ?? "",
         media: [],
         sendForApproval: post?.status === "pending_approval",
       });
     }
-  }, [open, post, form]);
+  }, [open, post, form, initialScheduledAt]);
+
+  // Register newly-uploaded Cloudinary assets against the post. MediaField only
+  // uploads to Cloudinary + holds the assets in form state; without this they
+  // were never attached to the post (so nothing showed in the client portal).
+  const saveMedia = async (postId: string, assets: PostFormValues["media"]) => {
+    if (!assets || assets.length === 0) return;
+    await Promise.all(
+      assets.map((m, i) =>
+        api(`/media/posts/${postId}`, {
+          method: "POST",
+          body: {
+            clientId,
+            cloudinaryPublicId: m.publicId,
+            secureUrl: m.secureUrl,
+            resourceType: m.resourceType,
+            format: m.format,
+            bytes: m.bytes,
+            width: m.width,
+            height: m.height,
+            position: i,
+          },
+        }),
+      ),
+    );
+    qc.invalidateQueries({ queryKey: ["clients", clientId, "posts"] });
+  };
 
   const onSubmit = async (values: PostFormValues) => {
     const scheduledAt = values.scheduledAt.toISOString();
@@ -94,6 +129,7 @@ export function PostFormSheet({
           scheduledAt,
           caption: values.caption,
         });
+        await saveMedia(post.id, values.media);
         // Move into / out of the approval queue if the toggle changed.
         if (values.sendForApproval && post.status === "draft") {
           await transition.mutateAsync("pending_approval");
@@ -107,6 +143,7 @@ export function PostFormSheet({
           caption: values.caption,
           status: "draft",
         });
+        await saveMedia(createdPost.id, values.media);
         if (values.sendForApproval) {
           await api<Post>(
             `/clients/${clientId}/posts/${createdPost.id}/transition`,
@@ -125,6 +162,23 @@ export function PostFormSheet({
   };
 
   const pending = create.isPending || update.isPending || transition.isPending;
+
+  // --- AI caption / hashtag studio -----------------------------------------
+  const [aiOpen, setAiOpen] = React.useState(false);
+  const caption = form.watch("caption");
+  const platforms = form.watch("platforms");
+
+  const applyCaption = (text: string) => {
+    form.setValue("caption", text, { shouldDirty: true });
+  };
+  const appendHashtags = (tags: string[]) => {
+    const current = form.getValues("caption") ?? "";
+    const joined = tags.join(" ");
+    const next = current.trim()
+      ? `${current.trimEnd()}\n\n${joined}`
+      : joined;
+    form.setValue("caption", next, { shouldDirty: true });
+  };
 
   return (
     <FormSheet
@@ -173,15 +227,20 @@ export function PostFormSheet({
             withTime
             required
           />
-          <TextareaField
-            control={form.control}
-            name="caption"
-            label="Caption"
-            placeholder="Write the caption…"
-            rows={5}
-            maxLength={2200}
-            showCount
-          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-end">
+              <AiCaptionTrigger onClick={() => setAiOpen(true)} />
+            </div>
+            <TextareaField
+              control={form.control}
+              name="caption"
+              label="Caption"
+              placeholder="Write the caption…"
+              rows={5}
+              maxLength={2200}
+              showCount
+            />
+          </div>
           <MediaField
             control={form.control}
             name="media"
@@ -199,6 +258,16 @@ export function PostFormSheet({
           />
         </div>
       </Form>
+
+      <AiCaptionHelper
+        open={aiOpen}
+        onOpenChange={setAiOpen}
+        caption={caption ?? ""}
+        platform={platforms?.[0]}
+        clientId={clientId}
+        onApplyCaption={applyCaption}
+        onAppendHashtags={appendHashtags}
+      />
     </FormSheet>
   );
 }
