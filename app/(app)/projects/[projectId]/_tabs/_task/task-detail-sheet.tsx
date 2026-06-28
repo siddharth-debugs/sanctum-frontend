@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -424,11 +424,19 @@ export function TaskDetailSheet({
                     <Trash2 className="size-4" />
                     Delete
                   </Button>
-                  <span className="ml-auto truncate text-right text-xs text-muted-foreground">
-                    Updated{" "}
-                    {formatDistanceToNow(new Date(task.updatedAt), {
-                      addSuffix: true,
-                    })}
+                  <span className="ml-auto flex items-center gap-1.5 truncate text-right text-xs text-muted-foreground">
+                    {updateTask.isPending || setLabels.isPending ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" /> Saving…
+                      </>
+                    ) : (
+                      <>
+                        Updated{" "}
+                        {formatDistanceToNow(new Date(task.updatedAt), {
+                          addSuffix: true,
+                        })}
+                      </>
+                    )}
                   </span>
                 </>
               )}

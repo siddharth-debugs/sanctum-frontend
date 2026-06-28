@@ -5,6 +5,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type {
   ProjectTask,
+  ProjectTaskDetail,
   ProjectTaskPriority,
   ProjectTaskStatus,
 } from "@/lib/api/types";
@@ -196,12 +197,26 @@ export function useUpdateProjectTask(projectId: string) {
           list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
         );
       }
-      return { snapshots };
+      // Also patch the single-task DETAIL cache so the open detail sheet
+      // (assignee picker, status, dates…) reflects the change INSTANTLY instead
+      // of after the server round-trip + refetch — the main perceived slowness.
+      const detailKey = queryKeys.projectTask(projectId, taskId);
+      const detailSnap = qc.getQueryData<ProjectTaskDetail>(detailKey);
+      if (detailSnap?.task) {
+        qc.setQueryData<ProjectTaskDetail>(detailKey, {
+          ...detailSnap,
+          task: { ...detailSnap.task, ...patch },
+        });
+      }
+      return { snapshots, detailKey, detailSnap };
     },
     onError: (_err, _vars, context) => {
       // Restore each snapshot we touched.
       for (const [key, data] of context?.snapshots ?? []) {
         qc.setQueryData(key, data);
+      }
+      if (context?.detailKey && context.detailSnap !== undefined) {
+        qc.setQueryData(context.detailKey, context.detailSnap);
       }
     },
     onSettled: () => invalidateTasks(qc, projectId),
