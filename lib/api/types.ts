@@ -367,16 +367,28 @@ export interface MeResponse {
   permissions: PermissionMap;
 }
 
+/**
+ * Session tokens returned by the auth endpoints. The SPA stores these and sends
+ * the access token as `Authorization: Bearer` so login works on every device
+ * (iOS/WebKit blocks the cross-domain auth cookie). See lib/auth-tokens.ts.
+ */
+export interface SessionTokens {
+  access: string;
+  refresh: string;
+}
+
 /** POST /auth/login payload. */
 export interface LoginResponse {
   user: AuthUser;
   agencyId: string;
+  tokens?: SessionTokens;
 }
 
 /** POST /auth/signup payload. */
 export interface SignupResponse {
   user: { id: string; email: string; fullName: string; role: Role };
   agency: { id: string; name: string; slug: string };
+  tokens?: SessionTokens;
 }
 
 /** GET /auth/invite?token= — preview of a pending team invite. */
@@ -391,6 +403,7 @@ export interface InviteInfo {
 export interface AcceptInviteResponse {
   user: { id: string; email: string; fullName: string | null; role: Role };
   agencyId: string;
+  tokens?: SessionTokens;
 }
 
 /** GET /auth/reset-password?token= — preview of a valid reset token. */
@@ -402,6 +415,7 @@ export interface ResetInfo {
 export interface ResetPasswordResponse {
   user: { id: string; email: string; fullName: string | null; role: Role };
   agencyId: string;
+  tokens?: SessionTokens;
 }
 
 /** POST /team/:userId/reset-password payload (owner/admin). */

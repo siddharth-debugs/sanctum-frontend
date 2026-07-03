@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api/client";
+import { setAuthTokens, clearAuthTokens } from "@/lib/auth-tokens";
 import { queryKeys } from "@/lib/api/query-keys";
 import type {
   AcceptInviteResponse,
@@ -43,7 +44,8 @@ export function useLogin() {
   return useMutation({
     mutationFn: (input: LoginInput) =>
       api<LoginResponse>("/auth/login", { method: "POST", body: input }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data.tokens) setAuthTokens(data.tokens);
       await qc.invalidateQueries({ queryKey: queryKeys.me });
       toast.success("Welcome back");
       router.replace("/dashboard");
@@ -69,7 +71,8 @@ export function useSignup() {
           password: input.password,
         },
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data.tokens) setAuthTokens(data.tokens);
       await qc.invalidateQueries({ queryKey: queryKeys.me });
       toast.success("Agency created");
       router.replace("/dashboard");
@@ -105,7 +108,8 @@ export function useAcceptInvite() {
         method: "POST",
         body: input,
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data.tokens) setAuthTokens(data.tokens);
       await qc.invalidateQueries({ queryKey: queryKeys.me });
       toast.success("Welcome to the team");
       router.replace("/dashboard");
@@ -162,7 +166,8 @@ export function useResetPassword() {
         method: "POST",
         body: input,
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data.tokens) setAuthTokens(data.tokens);
       await qc.invalidateQueries({ queryKey: queryKeys.me });
       toast.success("Password updated");
       router.replace("/dashboard");
@@ -196,6 +201,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api<{ loggedOut: boolean }>("/auth/logout", { method: "POST" }),
     onSettled: () => {
+      clearAuthTokens();
       qc.clear();
       router.replace("/login");
     },

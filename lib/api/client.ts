@@ -1,5 +1,11 @@
 import { apiBaseUrl } from "@/lib/env";
-import type { ApiEnvelope, ApiErrorBody } from "./types";
+import {
+  clearAuthTokens,
+  getAccessToken,
+  getRefreshToken,
+  setAuthTokens,
+} from "@/lib/auth-tokens";
+import type { ApiEnvelope, ApiErrorBody, SessionTokens } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -54,12 +60,27 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 export function refreshSession(): Promise<boolean> {
   if (!refreshInFlight) {
+    // Send the stored refresh token in the body (for devices where the refresh
+    // COOKIE is blocked — iOS); `credentials:"include"` keeps the cookie path
+    // working on desktop. On success, persist the rotated tokens.
+    const refresh = getRefreshToken();
     refreshInFlight = fetch(buildUrl("/auth/refresh"), {
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(refresh ? { refreshToken: refresh } : {}),
     })
-      .then((r) => r.ok)
+      .then(async (r) => {
+        if (r.status === 401) clearAuthTokens();
+        if (!r.ok) return false;
+        const json = (await r.json().catch(() => undefined)) as
+          | { data?: { tokens?: SessionTokens } }
+          | undefined;
+        const tokens = json?.data?.tokens;
+        if (tokens?.access && tokens?.refresh) setAuthTokens(tokens);
+        return true;
+      })
       .catch(() => false)
       .finally(() => {
         refreshInFlight = null;
@@ -83,19 +104,24 @@ export async function apiRequest<T>(
 ): Promise<ApiEnvelope<T>> {
   const { body, token, portalToken, headers, query, ...rest } = opts;
 
-  const send = () =>
-    fetch(buildUrl(path, query), {
+  const send = () => {
+    // Auth precedence: explicit portal token > explicit session token > the
+    // stored Bearer access token. Read at call time so a post-refresh retry
+    // picks up the rotated token. `credentials:"include"` keeps cookie auth as
+    // a desktop fallback.
+    const authToken = portalToken ?? token ?? getAccessToken() ?? undefined;
+    return fetch(buildUrl(path, query), {
       ...rest,
       credentials: "include",
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...headers,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
+  };
 
   let res = await send();
 

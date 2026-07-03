@@ -3,6 +3,7 @@
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
 import { apiBaseUrl } from "@/lib/env";
+import { getAccessToken } from "@/lib/auth-tokens";
 import type {
   Message,
   MessageDeletedEvent,
@@ -72,6 +73,10 @@ export function getSocket(): AppSocket {
       withCredentials: true,
       autoConnect: false,
       transports: ["websocket", "polling"],
+      // Send the Bearer token in the handshake so realtime auth works where the
+      // cross-domain cookie is blocked (iOS). Function form → re-read on every
+      // (re)connect so a rotated token is always used. Cookie stays as fallback.
+      auth: (cb) => cb({ token: getAccessToken() ?? undefined }),
     });
   }
   return socketSingleton;
