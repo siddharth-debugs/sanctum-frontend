@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Pencil, ExternalLink } from "lucide-react";
+import { CalendarDays, Pencil, ExternalLink, ArrowUpRight } from "lucide-react";
 
 import { ViewModal } from "@/components/app/view-modal";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,11 @@ export function ClientViewModal({
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Close
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/clients/${client.id}`}>
+              <ArrowUpRight className="size-4" /> View detail
+            </Link>
           </Button>
           <Button asChild variant="outline">
             <Link href={`/clients/${client.id}/calendar`}>
