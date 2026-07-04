@@ -3,9 +3,26 @@
  * reference on the client. Falls back to sensible local defaults so the app
  * (and `pnpm build`) works before the backend is wired.
  */
+// The live production backend. Used when NEXT_PUBLIC_API_URL is unset OR still
+// points at a decommissioned Render URL — an older Vercel env var referenced
+// `sanctum-backend-nxgr`, a service that no longer exists. The env var is still
+// preferred whenever it names a live host, so simply updating it in Vercel later
+// "just works" again (this pin self-heals).
+const PROD_API_URL = "https://sanctum-backend-uacb.onrender.com/api/v1";
+const DEAD_API_HOSTS = ["sanctum-backend-nxgr.onrender.com"];
+
+function resolveApiUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  const configuredIsDead =
+    !!configured && DEAD_API_HOSTS.some((h) => configured.includes(h));
+  if (configured && !configuredIsDead) return configured;
+  return process.env.NODE_ENV === "production"
+    ? PROD_API_URL
+    : "http://localhost:8080/api/v1";
+}
+
 export const env = {
-  NEXT_PUBLIC_API_URL:
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1",
+  NEXT_PUBLIC_API_URL: resolveApiUrl(),
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "demo",
 } as const;
@@ -13,9 +30,12 @@ export const env = {
 /**
  * True when a real API base URL is configured (the common case). Used to gate
  * the legacy mock fallbacks: when the API is configured we surface real errors
- * and empty states instead of faking data.
+ * and empty states instead of faking data. Production always has a real backend
+ * (pinned above), so it's true there regardless of the env var.
  */
-export const isApiConfigured = Boolean(process.env.NEXT_PUBLIC_API_URL);
+export const isApiConfigured =
+  Boolean(process.env.NEXT_PUBLIC_API_URL) ||
+  process.env.NODE_ENV === "production";
 
 /**
  * Runtime API base URL. When the configured host is localhost but the page is
