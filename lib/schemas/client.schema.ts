@@ -62,6 +62,8 @@ export const clientSchema = z.object({
   active: z.boolean(),
   /** Post statuses the client portal exposes (checkboxes). */
   portalVisibleStatuses: z.array(z.string()),
+  /** Client portal role: 'approver' (Client Admin) or 'reviewer' (Client Employee). */
+  portalRole: z.enum(["approver", "reviewer"]),
   internalNotes: z.string().max(2000).optional().or(z.literal("")),
 
   // BRANDING + HANDLES

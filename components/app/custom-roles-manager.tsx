@@ -30,16 +30,24 @@ import {
   useCreateCustomRole,
   useUpdateCustomRole,
   useDeleteCustomRole,
+  useRolePermissions,
 } from "@/hooks/use-roles";
 import { fullAccess } from "@/lib/permissions";
 import { ApiError } from "@/lib/api/client";
-import type { CustomRole, PermissionMap } from "@/lib/api/types";
+import type { CustomRole, PermissionMap, RolePreset } from "@/lib/api/types";
 
 export function CustomRolesManager({ canEdit }: { canEdit: boolean }) {
   const { data: roles, isLoading } = useCustomRoles();
+  const { data: rolesData } = useRolePermissions();
+  const presets = rolesData?.presets ?? [];
   const create = useCreateCustomRole();
   const update = useUpdateCustomRole();
   const del = useDeleteCustomRole();
+
+  const existingNames = React.useMemo(
+    () => new Set((roles ?? []).map((r) => r.name.toLowerCase())),
+    [roles],
+  );
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CustomRole | null>(null);
@@ -59,6 +67,14 @@ export function CustomRolesManager({ canEdit }: { canEdit: boolean }) {
     setName(r.name);
     setBaseRole(r.baseRole);
     setPerms(r.permissions);
+    setOpen(true);
+  };
+  /** Open the dialog pre-filled from a predefined template (owner can tweak). */
+  const applyPreset = (p: RolePreset) => {
+    setEditing(null);
+    setName(existingNames.has(p.name.toLowerCase()) ? `${p.name} 2` : p.name);
+    setBaseRole(p.baseRole);
+    setPerms({ ...fullAccess(), ...p.permissions } as PermissionMap);
     setOpen(true);
   };
 
@@ -94,6 +110,34 @@ export function CustomRolesManager({ canEdit }: { canEdit: boolean }) {
           </Button>
         )}
       </div>
+
+      {canEdit && presets.length > 0 && (
+        <div className="rounded-xl border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-3">
+          <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Quick-add a predefined role
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {presets.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => applyPreset(p)}
+                className="group flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary/50"
+              >
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">{p.name}</span>
+                  <span className="inline-flex items-center gap-1 text-xs text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                    <Plus className="size-3.5" /> Use
+                  </span>
+                </div>
+                <span className="line-clamp-2 text-xs text-muted-foreground">
+                  {p.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <Skeleton className="h-24 rounded-xl" />

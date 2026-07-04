@@ -44,6 +44,11 @@ const PORTAL_STATUS_OPTIONS = [
   { value: "posted", label: "Posted" },
 ] as const;
 
+const PORTAL_ROLE_OPTIONS = [
+  { value: "approver", label: "Client Admin — can approve" },
+  { value: "reviewer", label: "Client Reviewer — comment only" },
+];
+
 const DEFAULT_PORTAL_STATUSES = [
   "pending_approval",
   "approved",
@@ -93,6 +98,7 @@ export function ClientFormSheet({
       nextFollowUpAt: undefined,
       active: true,
       portalVisibleStatuses: DEFAULT_PORTAL_STATUSES,
+      portalRole: "approver",
       internalNotes: "",
       brandColor: "",
       instagram: "",
@@ -124,6 +130,7 @@ export function ClientFormSheet({
         active: client ? client.status === "active" : true,
         portalVisibleStatuses:
           client?.portalVisibleStatuses ?? DEFAULT_PORTAL_STATUSES,
+        portalRole: client?.portalRole ?? "approver",
         internalNotes: client?.internalNotes ?? "",
         brandColor: client?.brandColor ?? "",
         instagram: client?.handles?.instagram ?? "",
@@ -172,6 +179,7 @@ export function ClientFormSheet({
       // 'Active client' toggle — backend create only honours `isActive`.
       isActive: values.active,
       portalVisibleStatuses: values.portalVisibleStatuses,
+      portalRole: values.portalRole,
       // Always send handles (possibly empty) so cleared handles persist.
       handles,
     };
@@ -361,6 +369,15 @@ export function ClientFormSheet({
                 name="active"
                 label="Active client"
                 description="Inactive clients are archived and hidden from the active list."
+              />
+
+              {/* Portal role — what the client can do in their portal. */}
+              <SelectField
+                control={form.control}
+                name="portalRole"
+                label="Portal role"
+                options={PORTAL_ROLE_OPTIONS}
+                description="Client Admin can approve & request changes; Client Reviewer can view & comment only."
               />
 
               {/* Portal visibility — which post statuses the client can see. */}

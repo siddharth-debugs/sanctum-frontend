@@ -46,6 +46,7 @@ const MODULE_ICONS: Record<ModuleKey, LucideIcon> = {
 export const LEVEL_ACTIVE: Record<AccessLevel, string> = {
   none: "bg-[color-mix(in_srgb,var(--muted-foreground)_18%,transparent)] text-foreground",
   view: "bg-[color-mix(in_srgb,var(--accent)_22%,transparent)] text-accent",
+  edit: "bg-[color-mix(in_srgb,var(--warning)_28%,transparent)] text-foreground",
   manage:
     "[background-image:linear-gradient(180deg,var(--primary),color-mix(in_srgb,var(--primary)_85%,#000))] text-primary-foreground",
 };
@@ -63,7 +64,7 @@ export function AccessLevelSegmented({
   return (
     <div
       role="radiogroup"
-      className="inline-grid grid-cols-3 gap-0.5 rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-0.5"
+      className="inline-grid grid-cols-4 gap-0.5 rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-0.5"
     >
       {ACCESS_LEVELS.map((level) => {
         const active = value === level;

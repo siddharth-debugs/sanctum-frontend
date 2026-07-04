@@ -16,9 +16,22 @@ export const MODULES: ModuleKey[] = [
   "settings",
 ];
 
-export const ACCESS_LEVELS: AccessLevel[] = ["none", "view", "manage"];
+export const ACCESS_LEVELS: AccessLevel[] = ["none", "view", "edit", "manage"];
 
-const RANK: Record<AccessLevel, number> = { none: 0, view: 1, manage: 2 };
+const RANK: Record<AccessLevel, number> = {
+  none: 0,
+  view: 1,
+  edit: 2,
+  manage: 3,
+};
+
+/** CRUD operations each tier grants — for tooltips / explanations in the UI. */
+export const LEVEL_ACTIONS: Record<AccessLevel, string[]> = {
+  none: [],
+  view: ["View"],
+  edit: ["View", "Create", "Edit"],
+  manage: ["View", "Create", "Edit", "Delete"],
+};
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   dashboard: "Dashboard",
@@ -54,7 +67,8 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
 export const ACCESS_LABELS: Record<AccessLevel, string> = {
   none: "No access",
   view: "View",
-  manage: "Manage",
+  edit: "Edit",
+  manage: "Full",
 };
 
 /** A permission map granting `manage` on every module (the owner default). */
@@ -79,8 +93,23 @@ export function canView(
   return meetsLevel(perms[module] ?? "none", "view");
 }
 
-/** Can the holder of `perms` MANAGE (write to) the module? */
+/**
+ * Can the holder WRITE to the module (create / update)? True for `edit` and
+ * `manage`. Named `canManage` for backward-compat with existing write gates.
+ */
 export function canManage(
+  perms: PermissionMap | undefined,
+  module: ModuleKey,
+): boolean {
+  if (!perms) return false;
+  return meetsLevel(perms[module] ?? "none", "edit");
+}
+
+/** Alias of canManage — can create / update (write) in the module. */
+export const canEdit = canManage;
+
+/** Can the holder DELETE in the module? Only the `manage` (full) tier. */
+export function canDelete(
   perms: PermissionMap | undefined,
   module: ModuleKey,
 ): boolean {

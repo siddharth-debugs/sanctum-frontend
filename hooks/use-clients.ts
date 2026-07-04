@@ -59,6 +59,8 @@ export interface ClientInput {
   isActive?: boolean;
   /** Post statuses the client portal exposes. */
   portalVisibleStatuses?: string[];
+  /** Client portal role: 'approver' (Client Admin) or 'reviewer' (Client Employee). */
+  portalRole?: "approver" | "reviewer";
   status?: Client["status"];
 }
 

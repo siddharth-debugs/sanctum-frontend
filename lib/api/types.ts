@@ -22,7 +22,10 @@ export type ModuleKey =
   | "settings";
 
 /** Per-module access level: none < view < manage. */
-export type AccessLevel = "none" | "view" | "manage";
+export type AccessLevel = "none" | "view" | "edit" | "manage";
+
+/** The four CRUD operations an access tier can grant. */
+export type ModuleAction = "view" | "create" | "update" | "delete";
 
 /** Effective access level for every module (returned by /auth/me + /team). */
 export type PermissionMap = Record<ModuleKey, AccessLevel>;
@@ -38,6 +41,18 @@ export interface ModuleInfo {
 export interface RolePermissions {
   modules: ModuleInfo[];
   roles: Record<Role, PermissionMap>;
+  /** Predefined role templates the owner can apply in one click. */
+  presets?: RolePreset[];
+}
+
+/** A ready-made role template (Manager, Employee, Accountant…). */
+export interface RolePreset {
+  key: string;
+  name: string;
+  description: string;
+  baseRole: "admin" | "member";
+  colorToken: string;
+  permissions: Partial<PermissionMap>;
 }
 
 /** PUT /agency/roles body — partial per-role overrides (admin/member). */
@@ -828,6 +843,8 @@ export interface Client {
   contactEmail?: string | null;
   status: ClientStatus;
   portalVisibleStatuses: string[];
+  /** Client-side portal role: 'approver' (Client Admin) or 'reviewer' (Client Employee). */
+  portalRole?: "approver" | "reviewer";
   /** CRM: company profile. */
   industry?: string | null;
   website?: string | null;

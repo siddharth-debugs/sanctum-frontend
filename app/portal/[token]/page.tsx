@@ -623,7 +623,9 @@ export default function PortalPage({
                 </div>
               ) : (
                 <div className="mx-auto max-w-[480px] space-y-6">
-                  {filter === "review" && awaiting > 1 && (
+                  {filter === "review" &&
+                    awaiting > 1 &&
+                    data.portal.canApprove && (
                     <Button
                       className="h-11 w-full font-semibold shadow-sm"
                       disabled={approving}
