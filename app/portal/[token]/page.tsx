@@ -16,6 +16,11 @@ import {
   Inbox,
   Sparkles,
   ArrowRight,
+  FolderOpen,
+  FileText,
+  FileImage,
+  FileVideo,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,7 +35,7 @@ import { portalApi } from "@/lib/api/portal-client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { ApiError } from "@/lib/api/client";
 import { usePortalSocket } from "@/hooks/use-portal-socket";
-import { initials, cn } from "@/lib/utils";
+import { initials, cn, formatBytes } from "@/lib/utils";
 import { handleFor } from "@/lib/portal-handles";
 import type { PortalPost } from "@/lib/api/types";
 import type { PreviewBrand } from "@/components/app/portal-platform-preview";
@@ -199,6 +204,7 @@ export default function PortalPage({
   const agencyBrand = data?.agency?.brandColor || "var(--primary)";
   const clientBrand = data?.client.brandColor || agencyBrand;
   const posts = data?.posts ?? [];
+  const docs = data?.documents ?? [];
   const total = posts.length;
   const pendingPosts = posts.filter(
     (p) => p.status === "pending_approval" || p.status === "changes_requested",
@@ -465,6 +471,51 @@ export default function PortalPage({
 
         {/* ============ Main column ============ */}
         <main className="min-w-0">
+          {/* Shared files — visible to the client regardless of posts */}
+          {!isLoading && docs.length > 0 && (
+            <section className="glass mb-5 rounded-2xl p-4 sm:p-5">
+              <div className="mb-2 flex items-center gap-2">
+                <FolderOpen className="size-4 text-muted-foreground" />
+                <h2 className="font-display text-sm font-semibold">Files</h2>
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                  {docs.length}
+                </span>
+              </div>
+              <ul className="divide-y">
+                {docs.map((d) => {
+                  const Icon =
+                    d.resourceType === "image"
+                      ? FileImage
+                      : d.resourceType === "video"
+                        ? FileVideo
+                        : FileText;
+                  return (
+                    <li key={d.id}>
+                      <a
+                        href={d.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 py-2.5 transition-opacity hover:opacity-70"
+                      >
+                        <Icon className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">
+                            {d.name}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {formatBytes(d.sizeBytes)}
+                            {d.projectName ? ` · ${d.projectName}` : ""}
+                          </div>
+                        </div>
+                        <Download className="size-4 shrink-0 text-muted-foreground" />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
           {/* Toolbar: tabs + view toggle */}
           {!isLoading && data && total > 0 && (
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

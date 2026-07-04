@@ -1249,6 +1249,22 @@ export interface PortalData {
     canComment: boolean;
   };
   posts: PortalPost[];
+  /** Client-facing documents (project or client scoped). Absent on older APIs. */
+  documents?: PortalDocument[];
+}
+
+/** A client-facing document surfaced in the portal. */
+export interface PortalDocument {
+  id: string;
+  name: string;
+  category: DocumentCategory;
+  fileUrl: string;
+  resourceType: DocumentResourceType;
+  format: string | null;
+  sizeBytes: number;
+  projectId: string | null;
+  projectName: string | null;
+  createdAt: string;
 }
 
 export interface PortalPost {

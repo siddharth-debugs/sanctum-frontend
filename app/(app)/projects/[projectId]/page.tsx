@@ -44,6 +44,7 @@ import { OverviewTab } from "./_tabs/overview-tab";
 import { TasksTab } from "./_tabs/tasks-tab";
 import { MilestonesTab } from "./_tabs/milestones-tab";
 import { TeamTab } from "./_tabs/team-tab";
+import { FilesTab } from "./_tabs/files-tab";
 import { ActivityTab } from "./_tabs/activity-tab";
 import { ProjectTimerPill } from "./_project-timer-pill";
 
@@ -250,6 +251,7 @@ export default function ProjectDetailPage({
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="milestones">Milestones</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
@@ -264,6 +266,9 @@ export default function ProjectDetailPage({
         </TabsContent>
         <TabsContent value="team" className="mt-5">
           <TeamTab projectId={project.id} />
+        </TabsContent>
+        <TabsContent value="files" className="mt-5">
+          <FilesTab projectId={project.id} />
         </TabsContent>
         <TabsContent value="activity" className="mt-5">
           <ActivityTab projectId={project.id} />
