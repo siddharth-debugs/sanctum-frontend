@@ -65,7 +65,7 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
 };
 
 export const ACCESS_LABELS: Record<AccessLevel, string> = {
-  none: "No access",
+  none: "None",
   view: "View",
   edit: "Edit",
   manage: "Full",

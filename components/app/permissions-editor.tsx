@@ -64,7 +64,7 @@ export function AccessLevelSegmented({
   return (
     <div
       role="radiogroup"
-      className="inline-grid grid-cols-4 gap-0.5 rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-0.5"
+      className="inline-grid shrink-0 grid-cols-4 gap-0.5 rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-0.5"
     >
       {ACCESS_LEVELS.map((level) => {
         const active = value === level;
@@ -77,7 +77,7 @@ export function AccessLevelSegmented({
             disabled={disabled}
             onClick={() => onChange(level)}
             className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              "min-w-[3.25rem] whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
               active
                 ? LEVEL_ACTIVE[level]
                 : "text-muted-foreground hover:text-foreground",
@@ -119,29 +119,18 @@ export function PermissionsEditor({
           their next request.
         </p>
         {!disabled && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">Set all:</span>
-            <button
-              type="button"
-              onClick={() => setAll("none")}
-              className="rounded-md border px-2 py-1 font-medium hover:bg-muted"
-            >
-              None
-            </button>
-            <button
-              type="button"
-              onClick={() => setAll("view")}
-              className="rounded-md border px-2 py-1 font-medium hover:bg-muted"
-            >
-              View
-            </button>
-            <button
-              type="button"
-              onClick={() => setAll("manage")}
-              className="rounded-md border px-2 py-1 font-medium hover:bg-muted"
-            >
-              Manage
-            </button>
+            {ACCESS_LEVELS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setAll(level)}
+                className="rounded-md border px-2.5 py-1 font-medium hover:bg-muted"
+              >
+                {ACCESS_LABELS[level]}
+              </button>
+            ))}
           </div>
         )}
       </div>

@@ -176,7 +176,7 @@ export function CustomRolesManager({ canEdit }: { canEdit: boolean }) {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit role" : "New custom role"}</DialogTitle>
             <DialogDescription>

@@ -46,7 +46,7 @@ const PORTAL_STATUS_OPTIONS = [
 
 const PORTAL_ROLE_OPTIONS = [
   { value: "approver", label: "Client Admin — can approve" },
-  { value: "reviewer", label: "Client Reviewer — comment only" },
+  { value: "reviewer", label: "Client Employee — comment only" },
 ];
 
 const DEFAULT_PORTAL_STATUSES = [
@@ -377,7 +377,7 @@ export function ClientFormSheet({
                 name="portalRole"
                 label="Portal role"
                 options={PORTAL_ROLE_OPTIONS}
-                description="Client Admin can approve & request changes; Client Reviewer can view & comment only."
+                description="Client Admin can approve & request changes; Client Employee can view & comment only."
               />
 
               {/* Portal visibility — which post statuses the client can see. */}
