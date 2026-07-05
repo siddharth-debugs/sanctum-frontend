@@ -8,6 +8,9 @@ import type {
   PermissionMap,
 } from "@/lib/api/types";
 import { canManage, canView, fullAccess, meetsLevel } from "@/lib/permissions";
+import { useThemeVariant } from "@/theme/theme-provider";
+import { THEME_REGISTRY } from "@/theme/registry";
+import type { ThemeName } from "@/theme/types";
 
 const SessionContext = React.createContext<MeResponse | null>(null);
 
@@ -18,6 +21,16 @@ export function SessionProvider({
   value: MeResponse;
   children: React.ReactNode;
 }) {
+  // Apply the agency-wide theme preset (set by an admin in Settings) so every
+  // member sees the agency's chosen look. Falls back to the default silently.
+  const { setVariant } = useThemeVariant();
+  const preset = value.agency?.themePreset;
+  React.useEffect(() => {
+    if (preset && Object.prototype.hasOwnProperty.call(THEME_REGISTRY, preset)) {
+      setVariant(preset as ThemeName);
+    }
+  }, [preset, setVariant]);
+
   return (
     <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );

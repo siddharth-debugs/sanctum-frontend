@@ -1,4 +1,4 @@
-export type ThemeName = "evergreen";
+export type ThemeName = "evergreen" | "goldcrest";
 
 export type Mode = "light" | "dark";
 

@@ -17,6 +17,8 @@ export interface AgencyPatch {
   name?: string;
   logoUrl?: string | null;
   brandColor?: string | null;
+  /** Agency-wide UI theme preset key. */
+  themePreset?: string;
 }
 
 /** PATCH /agency — owner/admin edit branding. */

@@ -340,6 +340,8 @@ export interface Agency {
   slug: string;
   logoUrl?: string | null;
   brandColor?: string | null;
+  /** Agency-wide UI theme preset key (frontend theme registry). */
+  themePreset?: string;
   status?: AgencyStatus;
 }
 
