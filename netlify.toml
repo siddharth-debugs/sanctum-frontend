@@ -1,0 +1,8 @@
+# Netlify build config for the Sanctum Next.js frontend.
+# The official Next.js runtime handles SSR (App Router, dynamic routes) via
+# Netlify Functions/Edge — no static export.
+[build]
+  command = "pnpm build"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
