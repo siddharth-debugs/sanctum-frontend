@@ -90,13 +90,6 @@ export default function LoginPage() {
           </Button>
         </form>
       </Form>
-
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        New to Sanctum?{" "}
-        <Link href="/signup" className="font-semibold text-primary hover:underline">
-          Create an agency
-        </Link>
-      </p>
     </GlassCard>
   );
 }
