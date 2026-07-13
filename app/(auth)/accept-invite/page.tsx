@@ -26,7 +26,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/sanctum-logo.png?v=2"
+          src="/sanctum-logo.png?v=3"
           alt="Sanctum"
           width={48}
           height={48}
