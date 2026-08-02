@@ -15,10 +15,16 @@ function resolveApiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL;
   const configuredIsDead =
     !!configured && DEAD_API_HOSTS.some((h) => configured.includes(h));
-  if (configured && !configuredIsDead) return configured;
+  const isLocalhost =
+    !!configured && (configured.includes("localhost") || configured.includes("127.0.0.1"));
+
+  // In production, ignore any local .env overrides pointing to localhost
+  if (configured && !configuredIsDead && (!isLocalhost || process.env.NODE_ENV !== "production")) {
+    return configured;
+  }
   return process.env.NODE_ENV === "production"
     ? PROD_API_URL
-    : "http://localhost:8080/api/v1";
+    : "http://localhost:5050/api/v1";
 }
 
 export const env = {
@@ -50,7 +56,9 @@ export function apiBaseUrl(): string {
   try {
     const u = new URL(configured);
     const isLocal = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-    if (isLocal && window.location.hostname !== u.hostname) {
+    // Only rewrite for LAN dev testing, never on a public domain like app.thecreativemonk.in
+    const pageIsLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.") || window.location.hostname.startsWith("10.");
+    if (isLocal && pageIsLocal && window.location.hostname !== u.hostname) {
       u.hostname = window.location.hostname;
     }
     return u.toString().replace(/\/$/, "");
@@ -58,3 +66,4 @@ export function apiBaseUrl(): string {
     return configured;
   }
 }
+
