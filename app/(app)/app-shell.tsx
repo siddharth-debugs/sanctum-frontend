@@ -18,6 +18,8 @@ import { NotificationBell } from "@/components/app/notification-bell";
 import { AttendanceCheckIn } from "@/components/app/attendance-check-in";
 import { NoModuleAccess } from "@/components/app/no-module-access";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { getAccessToken, getRefreshToken } from "@/lib/auth-tokens";
 import { APP_NAV } from "@/lib/nav";
 import { canView, moduleForPath, firstAccessibleModule } from "@/lib/permissions";
 import { useMe, isUnauthenticated } from "@/hooks/use-me";
@@ -28,6 +30,7 @@ import { useNotificationStream } from "@/hooks/use-notifications";
 import { refreshSession } from "@/lib/api/client";
 import { SocketProvider } from "@/lib/socket";
 import { SessionProvider, useSession } from "./session-context";
+
 
 /**
  * Keep the session warm: the access token lives 15 min, so refresh every 10 min
@@ -83,14 +86,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const me = useMe();
 
-  // Redirect to /login on an unauthenticated session.
+  // Redirect to /login on an unauthenticated session (or when no tokens are stored).
   React.useEffect(() => {
-    if (me.isError && isUnauthenticated(me.error)) {
+    const hasTokens = Boolean(getAccessToken() || getRefreshToken());
+    if (me.isError && (isUnauthenticated(me.error) || !hasTokens)) {
       router.replace("/login");
     }
   }, [me.isError, me.error, router]);
 
-  if (me.isLoading || (me.isError && isUnauthenticated(me.error))) {
+  const hasTokens = typeof window !== "undefined" && Boolean(getAccessToken() || getRefreshToken());
+  const unauthed = me.isError && (isUnauthenticated(me.error) || !hasTokens);
+
+  if (me.isLoading || unauthed) {
     return <Splash />;
   }
 
@@ -98,17 +105,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="relative flex min-h-dvh items-center justify-center p-4 text-center">
         <AuroraBackground />
-        <div className="max-w-sm space-y-2">
-          <h1 className="font-display text-xl font-semibold">
-            Couldn&apos;t reach your workspace
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            The server is unavailable right now. Please retry in a moment.
-          </p>
+        <div className="max-w-sm space-y-4">
+          <div className="space-y-2">
+            <h1 className="font-display text-xl font-semibold">
+              Couldn&apos;t reach your workspace
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              The server is unavailable right now. Please retry or sign in again.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="default" onClick={() => router.push("/login")}>
+              Sign In
+            </Button>
+            <Button variant="outline" onClick={() => me.refetch()}>
+              Retry
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
+
 
   return (
     <SessionProvider value={me.data}>
