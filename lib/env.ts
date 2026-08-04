@@ -3,13 +3,18 @@
  * reference on the client. Falls back to sensible local defaults so the app
  * (and `pnpm build`) works before the backend is wired.
  */
-// The live production backend. Used when NEXT_PUBLIC_API_URL is unset OR still
-// points at a decommissioned Render URL — an older Vercel env var referenced
-// `sanctum-backend-nxgr`, a service that no longer exists. The env var is still
-// preferred whenever it names a live host, so simply updating it in Vercel later
-// "just works" again (this pin self-heals).
-const PROD_API_URL = "https://sanctum-backend-uacb.onrender.com/api/v1";
-const DEAD_API_HOSTS = ["sanctum-backend-nxgr.onrender.com"];
+// The live production backend — self-hosted on the Google Cloud VM
+// (api.creativemonk.in). Used when NEXT_PUBLIC_API_URL is unset OR still points
+// at a decommissioned Render URL. Render has been retired entirely, so every
+// known onrender host is listed as dead — the env var self-heals to GCP even if
+// a stale Render value lingers in Netlify/Vercel.
+const PROD_API_URL = "https://api.creativemonk.in/api/v1";
+const DEAD_API_HOSTS = [
+  "sanctum-backend-nxgr.onrender.com",
+  "sanctum-backend-uacb.onrender.com",
+  "sanctum-backend-kqw0.onrender.com",
+  "onrender.com",
+];
 
 function resolveApiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL;
