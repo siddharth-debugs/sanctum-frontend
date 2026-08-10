@@ -1,9 +1,19 @@
-# Netlify build config for the Sanctum Next.js frontend.
-# The official Next.js runtime handles SSR (App Router, dynamic routes) via
-# Netlify Functions/Edge — no static export.
+# Netlify configuration for Sanctum Next.js frontend
 [build]
-  command = "npx pnpm build"
+  command = "npm run build"
+  publish = ".next"
 
+[build.environment]
+  NODE_VERSION = "24"
+  NEXT_USE_NETLIFY_EDGE = "true"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+

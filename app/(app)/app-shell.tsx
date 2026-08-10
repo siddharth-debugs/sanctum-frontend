@@ -64,19 +64,19 @@ function useSessionKeepAlive() {
 /** Full-screen splash while we resolve the session. */
 function Splash() {
   return (
-    <div className="relative flex min-h-dvh items-center justify-center p-4">
+    <div className="relative flex min-h-screen w-full items-center justify-center p-4 bg-background text-foreground">
       <AuroraBackground />
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-4 z-10">
         <div
-          className="grid size-12 animate-pulse place-items-center rounded-lg font-display text-2xl font-semibold text-primary-foreground"
+          className="flex h-12 w-12 items-center justify-center rounded-xl font-display text-2xl font-bold text-white shadow-lg animate-pulse"
           style={{
             background:
-              "linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--accent) 70%,var(--primary)))",
+              "linear-gradient(135deg, var(--primary, #1f5f4e), var(--accent, #b08534))",
           }}
         >
           S
         </div>
-        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-24 rounded-full" />
       </div>
     </div>
   );
@@ -103,9 +103,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (me.isError || !me.data) {
     return (
-      <div className="relative flex min-h-dvh items-center justify-center p-4 text-center">
+      <div className="relative flex min-h-screen w-full items-center justify-center p-4 text-center bg-background text-foreground">
         <AuroraBackground />
-        <div className="max-w-sm space-y-4">
+        <div className="max-w-sm space-y-4 z-10">
           <div className="space-y-2">
             <h1 className="font-display text-xl font-semibold">
               Couldn&apos;t reach your workspace
