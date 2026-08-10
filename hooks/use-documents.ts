@@ -199,3 +199,72 @@ export function useUploadDocument() {
     },
   });
 }
+
+export interface CreateLinkedDocumentInput {
+  name: string;
+  url: string;
+  category: DocumentCategory;
+  clientId?: string | null;
+  projectId?: string | null;
+  clientVisible: 0 | 1;
+}
+
+/** Detect provider format from URL: gdrive | onedrive | dropbox | link */
+export function detectUrlFormat(url: string): string {
+  const clean = url.toLowerCase();
+  if (clean.includes("drive.google.com") || clean.includes("docs.google.com")) {
+    return "gdrive";
+  }
+  if (
+    clean.includes("onedrive") ||
+    clean.includes("1drv.ms") ||
+    clean.includes("sharepoint.com")
+  ) {
+    return "onedrive";
+  }
+  if (clean.includes("dropbox.com")) {
+    return "dropbox";
+  }
+  return "link";
+}
+
+export function useCreateLinkedDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateLinkedDocumentInput): Promise<Document> => {
+      const format = detectUrlFormat(input.url);
+      const mimeType =
+        format === "gdrive"
+          ? "application/vnd.google-apps"
+          : format === "onedrive"
+            ? "application/vnd.ms-onedrive"
+            : "text/html";
+
+      return api<Document>("/documents", {
+        method: "POST",
+        body: {
+          name: input.name,
+          category: input.category,
+          clientId: input.clientId || undefined,
+          projectId: input.projectId || undefined,
+          fileUrl: input.url,
+          publicId: undefined,
+          resourceType: "raw",
+          format,
+          mimeType,
+          sizeBytes: 0,
+          clientVisible: input.clientVisible,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Couldn't save link. Please retry.",
+      );
+    },
+  });
+}
