@@ -706,6 +706,71 @@ export interface FollowUp {
   ownerName: string | null;
 }
 
+// ---- Leads (website contact-form submissions → sales pipeline) ----
+
+/** Lead pipeline stage. Buckets: open=[new,contacted,qualified]; converted; bin=[lost,spam]. */
+export type LeadStage =
+  | "new"
+  | "contacted"
+  | "qualified"
+  | "converted"
+  | "lost"
+  | "spam";
+
+/** A prospective client captured before conversion. estimatedValue is INTEGER PAISE. */
+export interface Lead {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+  service: string | null;
+  budget: string | null;
+  message: string | null;
+  stage: LeadStage;
+  /** Estimated deal value in INTEGER PAISE (or null). */
+  estimatedValue: number | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  convertedClientId: string | null;
+  convertedClientName: string | null;
+  openFollowUps: number;
+  nextFollowUpAt: string | null;
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A timeline entry on a lead (note / call / meeting / email / follow-up / stage change). */
+export interface LeadActivity {
+  id: string;
+  leadId: string;
+  type: "note" | "call" | "meeting" | "email" | "follow_up" | "stage_change";
+  body: string;
+  authorId: string | null;
+  authorName: string | null;
+  dueAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+/** Aggregate lead counts (GET /leads/stats). */
+export interface LeadStats {
+  byStage: Record<string, number>;
+  open: number;
+  converted: number;
+  bin: number;
+}
+
+/** A pending follow-up flattened across open leads (GET /leads/follow-ups). */
+export interface LeadFollowUp extends LeadActivity {
+  leadName: string;
+  leadCompany: string | null;
+  leadStage: LeadStage;
+  overdue: boolean;
+}
+
 /** An agency-wide holiday. */
 export interface Holiday {
   id: string;

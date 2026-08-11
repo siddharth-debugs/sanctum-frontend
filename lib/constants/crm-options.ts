@@ -1,4 +1,4 @@
-import type { DealStage, ClientNoteType } from "@/lib/api/types";
+import type { DealStage, ClientNoteType, LeadStage } from "@/lib/api/types";
 
 /** Pipeline stages in order, with display metadata. */
 export const DEAL_STAGES: { value: DealStage; label: string; color: string }[] = [
@@ -33,3 +33,26 @@ export const NOTE_TYPE_META: Record<
 };
 
 export const NOTE_TYPES: ClientNoteType[] = ["note", "call", "meeting", "email", "task"];
+
+/** Lead pipeline stages (all 6) with display metadata. */
+export const LEAD_STAGE_META: Record<LeadStage, { label: string; color: string }> = {
+  new: { label: "New", color: "var(--muted-foreground)" },
+  contacted: { label: "Contacted", color: "#0ea5e9" },
+  qualified: { label: "Qualified", color: "var(--accent)" },
+  converted: { label: "Converted", color: "var(--success)" },
+  lost: { label: "Lost", color: "var(--destructive)" },
+  spam: { label: "Spam", color: "var(--warning)" },
+};
+
+/** The three open (working) stages, shown as kanban columns. */
+export const LEAD_OPEN_STAGES: LeadStage[] = ["new", "contacted", "qualified"];
+
+/** All stages a user may set from a Select. */
+export const LEAD_STAGES: LeadStage[] = [
+  "new",
+  "contacted",
+  "qualified",
+  "converted",
+  "lost",
+  "spam",
+];

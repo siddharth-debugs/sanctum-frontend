@@ -34,6 +34,8 @@ import { ClientViewModal } from "@/components/app/client-view-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PipelineBoard } from "@/components/app/crm/pipeline-board";
 import { FollowUpsCard } from "@/components/app/crm/follow-ups-card";
+import { LeadsBoard } from "@/components/app/crm/leads-board";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-clients";
@@ -59,8 +61,22 @@ const STATUS_FACET: DataTableFacet = {
 };
 
 export default function ClientsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ClientsContent />
+    </React.Suspense>
+  );
+}
+
+function ClientsContent() {
   const { data, isLoading, error } = useClients();
   const session = useSession();
+  const searchParams = useSearchParams();
+  // Deep link support: /clients?tab=leads&lead=<id> opens the Leads tab and
+  // (optionally) auto-opens that lead's detail sheet.
+  const initialTab = searchParams.get("tab") === "leads" ? "leads" : "directory";
+  const [tab, setTab] = React.useState(initialTab);
+  const leadParam = searchParams.get("lead");
   // Create/edit/archive are owner/admin-only on the backend — gate the UI to match.
   const canManage =
     session.user.role === "owner" || session.user.role === "admin";
@@ -273,9 +289,10 @@ export default function ClientsPage() {
         }
       />
 
-      <Tabs defaultValue="directory">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="directory">Directory</TabsTrigger>
+          <TabsTrigger value="leads">Leads</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="followups">Follow-ups</TabsTrigger>
         </TabsList>
@@ -306,6 +323,10 @@ export default function ClientsPage() {
               ) : undefined
             }
           />
+        </TabsContent>
+
+        <TabsContent value="leads" className="mt-5">
+          <LeadsBoard initialLeadId={leadParam} />
         </TabsContent>
 
         <TabsContent value="pipeline" className="mt-5">

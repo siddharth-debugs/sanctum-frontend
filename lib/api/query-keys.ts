@@ -18,6 +18,11 @@ export const queryKeys = {
   pipeline: ["crm", "deals"] as const,
   clientDeals: (clientId: string) => ["crm", "deals", clientId] as const,
   followUps: ["crm", "follow-ups"] as const,
+  // Leads
+  leads: (filters?: Record<string, unknown>) => ["leads", filters ?? {}] as const,
+  leadStats: ["leads", "stats"] as const,
+  leadFollowUps: ["leads", "follow-ups"] as const,
+  lead: (id: string) => ["leads", id] as const,
   posts: (clientId: string, filters?: Record<string, unknown>) =>
     ["clients", clientId, "posts", filters ?? {}] as const,
   post: (clientId: string, postId: string) =>
