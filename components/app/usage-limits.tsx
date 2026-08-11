@@ -1,21 +1,13 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sparkles,
-  Users,
-  UserCog,
-  HardDrive,
-  Gauge,
-  Lock,
-} from "lucide-react";
+import { Sparkles, HardDrive, Lock } from "lucide-react";
 
 import { GlassCard } from "@/components/app/glass-card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUsage } from "@/hooks/use-usage";
 import { formatBytes, cn } from "@/lib/utils";
-import type { RateLimitWindow } from "@/lib/api/types";
 
 /** Safe percentage for a progress bar; guards null limits and divide-by-zero. */
 function pct(used: number, limit: number | null): number {
@@ -27,20 +19,6 @@ function pct(used: number, limit: number | null): number {
 function ratio(used: number, limit: number | null, fmt?: (n: number) => string) {
   const f = fmt ?? ((n: number) => String(n));
   return limit == null ? `${f(used)} / Unlimited` : `${f(used)} / ${f(limit)}`;
-}
-
-/** Turn a rate-limit window into "20 requests / min" style copy. */
-function rateLabel(rl: RateLimitWindow): string {
-  const ms = rl.windowMs;
-  const min = ms / 60000;
-  let unit: string;
-  if (ms < 60000) unit = `${Math.round(ms / 1000)} sec`;
-  else if (min === 1) unit = "min";
-  else if (min === 60) unit = "hour";
-  else if (min % 60 === 0) unit = `${min / 60} hours`;
-  else unit = `${min} min`;
-  const noun = rl.max === 1 ? "request" : "requests";
-  return `${rl.max} ${noun} / ${unit}`;
 }
 
 /** Period like "2026-06" → "June 2026". */
@@ -162,8 +140,7 @@ export function UsageLimits({ className }: { className?: string }) {
             AI usage &amp; limits
           </h2>
           <p className="text-sm text-muted-foreground">
-            Your plan&apos;s monthly quota and the API rate limits that protect
-            the workspace.
+            Your workspace&apos;s AI generation quota and storage.
           </p>
         </div>
         {u.planName && (
@@ -197,50 +174,14 @@ export function UsageLimits({ className }: { className?: string }) {
         </p>
       </div>
 
-      {/* Resource meters. */}
+      {/* Storage — the only resource meter. */}
       <div className="mt-5 space-y-4">
-        <MeterRow
-          icon={Users}
-          label="Clients"
-          value={ratio(u.clients.used, u.clients.limit)}
-          percent={pct(u.clients.used, u.clients.limit)}
-        />
-        <MeterRow
-          icon={UserCog}
-          label="Team seats"
-          value={ratio(u.team.used, u.team.limit)}
-          percent={pct(u.team.used, u.team.limit)}
-        />
         <MeterRow
           icon={HardDrive}
           label="Storage"
           value={ratio(u.storage.usedBytes, u.storage.limitBytes, formatBytes)}
           percent={pct(u.storage.usedBytes, u.storage.limitBytes)}
         />
-      </div>
-
-      {/* API rate limits. */}
-      <div className="mt-6 rounded-xl border border-border bg-secondary/40 p-4">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Gauge className="size-4 text-muted-foreground" />
-          API rate limits
-        </div>
-        <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-          {(
-            [
-              ["AI generation", u.rateLimits.ai],
-              ["Authentication", u.rateLimits.auth],
-              ["Global", u.rateLimits.global],
-            ] as const
-          ).map(([name, rl]) => (
-            <div key={name} className="space-y-0.5">
-              <dt className="text-xs text-muted-foreground">{name}</dt>
-              <dd className="text-sm font-semibold tabular-nums">
-                {rateLabel(rl)}
-              </dd>
-            </div>
-          ))}
-        </dl>
       </div>
     </GlassCard>
   );
