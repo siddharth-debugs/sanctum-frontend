@@ -59,19 +59,28 @@ export function DocumentUploadDialog({
   onOpenChange,
   /** Pre-selected (and locked) client — used from the client Files tab. */
   lockedClientId,
+  /** Pre-selected (and locked) project — used from the project Files tab. */
+  lockedProjectId,
   defaultCategory = "misc",
+  /** Pre-set the client-portal visibility (e.g. the "Client-facing" folder). */
+  defaultClientVisible = false,
+  /** Open on the "upload" or "link" tab first. */
+  defaultMode = "upload",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lockedClientId?: string;
+  lockedProjectId?: string;
   defaultCategory?: DocumentCategory;
+  defaultClientVisible?: boolean;
+  defaultMode?: "upload" | "link";
 }) {
   const upload = useUploadDocument();
   const createLink = useCreateLinkedDocument();
   const { data: clients } = useClients();
   const { data: projects } = useProjects();
 
-  const [mode, setMode] = React.useState<"upload" | "link">("upload");
+  const [mode, setMode] = React.useState<"upload" | "link">(defaultMode);
   const [file, setFile] = React.useState<File | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
@@ -79,33 +88,41 @@ export function DocumentUploadDialog({
 
   const form = useForm<UploadFormValues>({
     defaultValues: {
-      mode: "upload",
+      mode: defaultMode,
       name: "",
       url: "",
       category: defaultCategory,
       clientId: lockedClientId ?? "",
-      projectId: "",
-      clientVisible: false,
+      projectId: lockedProjectId ?? "",
+      clientVisible: defaultClientVisible,
     },
   });
 
   React.useEffect(() => {
     if (open) {
-      setMode("upload");
+      setMode(defaultMode);
       setFile(null);
       setProgress(0);
       setDragging(false);
       form.reset({
-        mode: "upload",
+        mode: defaultMode,
         name: "",
         url: "",
         category: defaultCategory,
         clientId: lockedClientId ?? "",
-        projectId: "",
-        clientVisible: false,
+        projectId: lockedProjectId ?? "",
+        clientVisible: defaultClientVisible,
       });
     }
-  }, [open, lockedClientId, defaultCategory, form]);
+  }, [
+    open,
+    lockedClientId,
+    lockedProjectId,
+    defaultCategory,
+    defaultClientVisible,
+    defaultMode,
+    form,
+  ]);
 
   const clientOptions = React.useMemo(
     () => (clients ?? []).map((c) => ({ label: c.name, value: c.id })),
@@ -388,7 +405,7 @@ export function DocumentUploadDialog({
                 placeholder="Select project (optional)"
                 options={projectOptions}
                 emptyText="No projects for this client."
-                disabled={pending}
+                disabled={pending || !!lockedProjectId}
               />
             </div>
 

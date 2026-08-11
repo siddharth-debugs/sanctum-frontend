@@ -14,6 +14,10 @@ import {
   ArrowLeftRight,
   MoreHorizontal,
   Loader2,
+  Link2,
+  ExternalLink,
+  HardDrive,
+  Cloud,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +42,7 @@ import {
   useDeleteDocument,
   useUpdateDocument,
 } from "@/hooks/use-documents";
+import { DocumentUploadDialog } from "@/components/app/document-upload-dialog";
 import { ApiError } from "@/lib/api/client";
 import { cn, formatBytes, formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api/types";
@@ -45,9 +50,36 @@ import { ListSkeleton } from "./shared";
 
 type Folder = "internal" | "external";
 
-function FileIcon({ type }: { type: Document["resourceType"] }) {
+/** A document is a cloud link (Drive/OneDrive/…) rather than an uploaded file
+ * when it has no Cloudinary publicId. */
+function isLinkDoc(doc: Document): boolean {
+  return !doc.publicId;
+}
+
+function linkProvider(doc: Document): { label: string; Icon: typeof Link2 } {
+  switch (doc.format) {
+    case "gdrive":
+      return { label: "Google Drive", Icon: HardDrive };
+    case "onedrive":
+      return { label: "OneDrive", Icon: Cloud };
+    case "dropbox":
+      return { label: "Dropbox", Icon: Cloud };
+    default:
+      return { label: "Link", Icon: Link2 };
+  }
+}
+
+function FileIcon({ doc }: { doc: Document }) {
+  if (isLinkDoc(doc)) {
+    const { Icon } = linkProvider(doc);
+    return <Icon className="size-4 shrink-0 text-emerald-500" />;
+  }
   const Icon =
-    type === "image" ? FileImage : type === "video" ? FileVideo : FileText;
+    doc.resourceType === "image"
+      ? FileImage
+      : doc.resourceType === "video"
+        ? FileVideo
+        : FileText;
   return <Icon className="size-4 shrink-0 text-muted-foreground" />;
 }
 
@@ -111,6 +143,7 @@ function FolderSection({
   const upload = useUploadDocument();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = React.useState(false);
+  const [linkOpen, setLinkOpen] = React.useState(false);
   const clientVisible = folder === "external" ? 1 : 0;
 
   async function onFiles(files: FileList | null) {
@@ -162,20 +195,39 @@ function FolderSection({
           className="hidden"
           onChange={(e) => onFiles(e.target.files)}
         />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Upload className="size-4" />
-          )}
-          Upload
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setLinkOpen(true)}
+            title="Attach a Google Drive / OneDrive link (uses 0 storage)"
+          >
+            <Link2 className="size-4" />
+            Add link
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Upload className="size-4" />
+            )}
+            Upload
+          </Button>
+        </div>
       </header>
+
+      <DocumentUploadDialog
+        open={linkOpen}
+        onOpenChange={setLinkOpen}
+        lockedProjectId={projectId}
+        defaultClientVisible={folder === "external"}
+        defaultMode="link"
+      />
 
       <div className="flex-1 p-2">
         {loading ? (
@@ -208,6 +260,8 @@ function DocRow({ doc, folder }: { doc: Document; folder: Folder }) {
   const del = useDeleteDocument();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
+  const link = isLinkDoc(doc);
+  const provider = linkProvider(doc);
   const moveLabel =
     folder === "internal" ? "Move to client-facing" : "Move to internal";
 
@@ -244,18 +298,19 @@ function DocRow({ doc, folder }: { doc: Document; folder: Folder }) {
         del.isPending && "opacity-50",
       )}
     >
-      <FileIcon type={doc.resourceType} />
+      <FileIcon doc={doc} />
       <a
         href={doc.fileUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="min-w-0 flex-1"
       >
-        <div className="truncate text-sm font-medium group-hover:underline">
+        <div className="flex items-center gap-1.5 truncate text-sm font-medium group-hover:underline">
           {doc.name}
+          {link && <ExternalLink className="size-3 shrink-0 text-muted-foreground" />}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {formatBytes(doc.sizeBytes)}
+          {link ? provider.label : formatBytes(doc.sizeBytes)}
           {doc.uploadedByName ? ` · ${doc.uploadedByName}` : ""} ·{" "}
           {formatDate(doc.createdAt)}
         </div>
@@ -275,7 +330,15 @@ function DocRow({ doc, folder }: { doc: Document; folder: Folder }) {
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-              <Download className="size-4" /> Download
+              {link ? (
+                <>
+                  <ExternalLink className="size-4" /> Open link
+                </>
+              ) : (
+                <>
+                  <Download className="size-4" /> Download
+                </>
+              )}
             </a>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onMove} disabled={move.isPending}>
