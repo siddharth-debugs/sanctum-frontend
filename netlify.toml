@@ -1,11 +1,10 @@
-# Netlify configuration for Sanctum Next.js frontend
 [build]
-  command = "npm run build"
+  command = "pnpm run build"
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "24"
-  NEXT_USE_NETLIFY_EDGE = "true"
+  NODE_VERSION = "22"
+  NPM_FLAGS = "--legacy-peer-deps"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
