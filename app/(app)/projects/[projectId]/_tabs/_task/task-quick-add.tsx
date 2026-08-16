@@ -173,7 +173,7 @@ function activeToken(text: string, caret: number): ActiveToken {
  */
 export function TaskQuickAdd({
   projectId,
-  defaultStatus = "backlog",
+  defaultStatus = "todo",
   defaultMilestoneId = null,
   className,
 }: TaskQuickAddProps) {

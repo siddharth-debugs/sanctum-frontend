@@ -214,7 +214,7 @@ export function TasksTab({ projectId }: { projectId: string }) {
 
       {/* Inline quick-add — always available so adding the first task is one
           keystroke away even from the empty state. */}
-      <TaskQuickAdd projectId={projectId} defaultStatus="backlog" />
+      <TaskQuickAdd projectId={projectId} defaultStatus="todo" />
 
       {isLoading ? (
         <ListSkeleton rows={5} />

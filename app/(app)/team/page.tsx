@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { UserPlus, Users, Search, LayoutGrid, Rows3 } from "lucide-react";
+import {
+  UserPlus,
+  Users,
+  Search,
+  LayoutGrid,
+  Rows3,
+  Building2,
+  Contact,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
 import { InviteMemberSheet } from "@/components/app/invite-member-sheet";
@@ -45,10 +53,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTeam } from "@/hooks/use-team";
+import { useTeam, useClientUsers } from "@/hooks/use-team";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { useCan } from "../session-context";
-import { initials, cn } from "@/lib/utils";
+import { initials, cn, formatDate } from "@/lib/utils";
 import { fmtHours } from "@/lib/constants/team-options";
 import type { TeamMember } from "@/lib/api/types";
 
@@ -435,6 +443,109 @@ function UtilizationTab() {
   );
 }
 
+/** Client-login accounts — kept SEPARATE from agency team members. */
+function ClientAccountsTab() {
+  const { data, isLoading, error } = useClientUsers();
+  const clients = data ?? [];
+
+  if (isLoading) return <Skeleton className="h-64 w-full rounded-xl" />;
+  if (error)
+    return (
+      <GlassCard className="p-10 text-center text-sm text-muted-foreground">
+        Couldn&apos;t load client accounts. Please retry.
+      </GlassCard>
+    );
+  if (clients.length === 0)
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center">
+        <span className="grid size-12 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-accent">
+          <Contact className="size-5" />
+        </span>
+        <div className="space-y-1">
+          <p className="font-display text-base font-semibold">
+            No client logins yet
+          </p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Use “Invite Member” → Client to give a client portal access.
+          </p>
+        </div>
+      </div>
+    );
+
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Client portal logins — people on your clients&apos; side. They&apos;re
+          kept separate from your agency team.
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-[11px] uppercase tracking-wide">
+                Client contact
+              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">
+                Brand
+              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">
+                Access
+              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wide">
+                Last login
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {clients.map((c) => (
+              <TableRow key={c.id} className="hover:bg-muted/40">
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="size-9">
+                      <AvatarFallback
+                        className="text-xs font-bold text-accent"
+                        style={{
+                          background:
+                            "color-mix(in srgb,var(--accent) 16%,transparent)",
+                        }}
+                      >
+                        {initials(c.fullName ?? c.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 truncate text-sm font-semibold">
+                        {c.fullName ?? c.email}
+                        {c.status === "disabled" && <InactiveChip />}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {c.email}
+                      </p>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <span className="inline-flex items-center gap-1.5 text-sm">
+                    <Building2 className="size-3.5 text-muted-foreground" />
+                    {c.clientName ?? "—"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {c.projectScope === 0
+                    ? "All projects"
+                    : `${c.projectScope} project${c.projectScope === 1 ? "" : "s"}`}
+                </TableCell>
+                <TableCell className="text-sm tabular-nums text-muted-foreground">
+                  {c.lastLoginAt ? formatDate(c.lastLoginAt) : "Never"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TeamPage() {
   const inviteSheet = useDisclosure();
   const { can } = useCan();
@@ -463,6 +574,9 @@ export default function TeamPage() {
         <TabsList>
           <TabsTrigger value="directory">Directory</TabsTrigger>
           <TabsTrigger value="utilization">Utilization</TabsTrigger>
+          {canManage && (
+            <TabsTrigger value="clients">Client accounts</TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="directory" className="mt-5">
           <DirectoryTab onInvite={() => inviteSheet.onOpen()} />
@@ -470,6 +584,11 @@ export default function TeamPage() {
         <TabsContent value="utilization" className="mt-5">
           <UtilizationTab />
         </TabsContent>
+        {canManage && (
+          <TabsContent value="clients" className="mt-5">
+            <ClientAccountsTab />
+          </TabsContent>
+        )}
       </Tabs>
 
       <InviteMemberSheet

@@ -27,6 +27,7 @@ import {
   useCheckOut,
   capturePunchLocation,
   geoErrorMessage,
+  isCheckoutPending,
 } from "@/hooks/use-attendance";
 import { fmtDuration } from "@/hooks/use-timers";
 import { ApiError } from "@/lib/api/client";
@@ -87,6 +88,8 @@ export function AttendanceCheckIn() {
   const [locState, setLocState] = React.useState<"on" | "off" | null>(null);
   // True while we're reading geolocation + reverse-geocoding (before the punch).
   const [capturing, setCapturing] = React.useState(false);
+  // Set when a checkout landed outside the office fence and awaits approval.
+  const [awaitingApproval, setAwaitingApproval] = React.useState(false);
 
   const record = today?.record ?? null;
   const isCheckedIn = !!record?.checkInAt && !record?.checkOutAt;
@@ -143,10 +146,20 @@ export function AttendanceCheckIn() {
     setLocState(punch.lat != null ? "on" : "off");
 
     checkOut.mutate(punch, {
-      onSuccess: (rec) => {
+      onSuccess: (res) => {
+        // Out-of-office checkout → held for an approver. Keep the day as
+        // checked-in-pending; don't treat it as done.
+        if (isCheckoutPending(res)) {
+          setAwaitingApproval(true);
+          toast.message(
+            `Checkout sent for approval (you were ${res.distanceM} m outside the office).`,
+          );
+          return;
+        }
+        setAwaitingApproval(false);
         toast.success(
-          `Checked out at ${fmtTime(rec.checkOutAt)} · ${fmtDuration(
-            rec.workedMinutes,
+          `Checked out at ${fmtTime(res.checkOutAt)} · ${fmtDuration(
+            res.workedMinutes,
           )} worked`,
         );
         setOpen(false);
@@ -324,23 +337,34 @@ export function AttendanceCheckIn() {
               </p>
             </div>
           ) : isCheckedIn ? (
-            <Button
-              className="w-full min-h-11"
-              variant="destructive"
-              onClick={handleCheckOut}
-              disabled={pending}
-            >
-              {pending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <LogOut className="size-4" aria-hidden />
+            <div className="space-y-2">
+              {awaitingApproval && (
+                <div className="flex items-start gap-1.5 rounded-md border border-[color-mix(in_srgb,var(--warning)_35%,var(--border))] bg-[color-mix(in_srgb,var(--warning)_10%,var(--card))] px-3 py-2 text-xs text-foreground">
+                  <Clock className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" aria-hidden />
+                  Checkout awaiting approval — you were outside the office. You&apos;re
+                  still checked in until it&apos;s approved.
+                </div>
               )}
-              {capturing
-                ? "Locating…"
-                : checkOut.isPending
-                  ? "Checking out…"
-                  : "Check out"}
-            </Button>
+              <Button
+                className="w-full min-h-11"
+                variant="destructive"
+                onClick={handleCheckOut}
+                disabled={pending}
+              >
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <LogOut className="size-4" aria-hidden />
+                )}
+                {capturing
+                  ? "Locating…"
+                  : checkOut.isPending
+                    ? "Checking out…"
+                    : awaitingApproval
+                      ? "Retry checkout"
+                      : "Check out"}
+              </Button>
+            </div>
           ) : (
             <Button
               className="w-full min-h-11"

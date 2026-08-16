@@ -4,7 +4,10 @@
  * { error: { code, message, details?, requestId? } }.
  */
 
-export type Role = "owner" | "admin" | "member";
+export type Role = "owner" | "admin" | "member" | "client";
+
+/** Effective persona used for role-specific dashboards + client redirect. */
+export type Persona = "owner" | "admin" | "manager" | "employee" | "client";
 
 /** Sidebar/dashboard modules that module-level RBAC can gate. */
 export type ModuleKey =
@@ -373,6 +376,10 @@ export interface AuthUser {
   /** Custom role id (when assigned one) + display name (custom or built-in). */
   customRoleId?: string | null;
   roleName?: string;
+  /** For a `client` login: the brand they belong to. */
+  clientId?: string | null;
+  /** owner | admin | manager | employee | client (drives the dashboard). */
+  persona?: Persona;
 }
 
 /** GET /auth/me payload. */
@@ -382,6 +389,99 @@ export interface MeResponse {
   plan: PlanSummary | null;
   /** Effective module permissions for the signed-in user. */
   permissions: PermissionMap;
+  /** owner | admin | manager | employee | client. */
+  persona?: Persona;
+}
+
+// ── Client-portal (logged-in `client` role) ─────────────────────────────────
+export interface ClientPortalMe {
+  user: { id: string; email: string; fullName: string | null } | null;
+  client: { id: string; name: string } | null;
+  agency: { name: string; logoUrl: string | null; brandColor: string | null } | null;
+  scope: { allProjects: boolean; projectCount: number };
+}
+
+export interface ClientProject {
+  id: string;
+  name: string;
+  status: string;
+  health: string | null;
+  deadline: string | null;
+  startDate: string | null;
+  tasksTotal: number;
+  tasksDone: number;
+  progress: number;
+}
+
+export interface ClientProjectDetail extends ClientProject {
+  description: string | null;
+  tasksByStatus: Record<string, number>;
+  tasks: ClientTask[];
+  milestones: Array<{
+    id: string;
+    title: string;
+    status: string;
+    dueDate: string | null;
+  }>;
+}
+
+export interface ClientTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  done: boolean;
+  assignees: Array<{ id: string; name: string }>;
+}
+
+export interface ClientTeamMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface ClientFile {
+  id: string;
+  name: string;
+  category: string;
+  fileUrl: string;
+  resourceType: string;
+  format: string | null;
+  sizeBytes: number;
+  isLink: boolean;
+  createdAt: string;
+}
+
+/**
+ * A content post surfaced in the logged-in client's calendar (GET
+ * /client/calendar). Drafts are excluded server-side. Fields are typed as plain
+ * strings (not the strict staff unions) since this is a redacted portal view.
+ */
+export interface ClientPost {
+  id: string;
+  postType: string;
+  caption: string | null;
+  platforms: string[];
+  scheduledAt: string | null;
+  /** pending_approval | approved | changes_requested | scheduled | posted */
+  status: string;
+  media: Array<{
+    resourceType: string;
+    secureUrl: string;
+    width: number | null;
+    height: number | null;
+  }>;
+  commentCount: number;
+}
+
+/** A comment on a client post (GET/POST /client/posts/:postId/comments). */
+export interface ClientPostComment {
+  id: string;
+  authorType: "user" | "client";
+  author: string;
+  body: string;
+  createdAt: string;
 }
 
 /**
@@ -957,7 +1057,8 @@ export interface Project {
   type: ProjectType;
   status: ProjectStatus;
   health: ProjectHealth;
-  contractValue: number;
+  /** Null when the caller lacks finance access (money is finance-gated). */
+  contractValue: number | null;
   currency: "INR" | string;
   startDate: string | null;
   deadline: string | null;
@@ -1494,6 +1595,168 @@ export interface Document {
   clientVisible: 0 | 1;
   uploadedBy: string | null;
   uploadedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Proposals & Agreements
+// ---------------------------------------------------------------------------
+
+export type ProposalStatus =
+  | "draft"
+  | "sent"
+  | "viewed"
+  | "accepted"
+  | "rejected"
+  | "expired"
+  | "converted";
+
+export interface ProposalTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  content: Record<string, any>;
+  createdAt: string;
+}
+
+export interface Proposal {
+  id: string;
+  proposalNumber?: string | null;
+  title: string;
+  clientId: string | null;
+  clientName?: string | null;
+  leadId: string | null;
+  leadName?: string | null;
+  templateId: string | null;
+  status: ProposalStatus;
+  currency: string;
+  subtotalPaise?: number | null;
+  taxPaise?: number | null;
+  totalPaise?: number | null;
+  validUntil?: string | null;
+  content: Record<string, any>;
+  token?: string | null;
+  sentAt?: string | null;
+  viewedAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+  convertedAgreementId?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AgreementStatus =
+  | "draft"
+  | "sent"
+  | "signed"
+  | "active"
+  | "terminated"
+  | "expired";
+
+export interface AgreementTemplate {
+  id: string;
+  name: string;
+  type: "msa" | "retainer" | "sow" | "nda" | "custom";
+  description: string | null;
+  terms: Record<string, any>;
+  createdAt: string;
+}
+
+export interface Agreement {
+  id: string;
+  agreementNumber?: string | null;
+  title: string;
+  clientId: string;
+  clientName?: string | null;
+  proposalId?: string | null;
+  projectId?: string | null;
+  templateId?: string | null;
+  status: AgreementStatus;
+  currency: string;
+  retainerPaise?: number | null;
+  totalValuePaise?: number | null;
+  effectiveDate?: string | null;
+  expirationDate?: string | null;
+  terms: Record<string, any>;
+  token?: string | null;
+  sentAt?: string | null;
+  signedAt?: string | null;
+  signerName?: string | null;
+  signerEmail?: string | null;
+  signerIp?: string | null;
+  signatureDataUrl?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+export type InvoiceStatus =
+  | "draft"
+  | "sent"
+  | "partially_paid"
+  | "paid"
+  | "cancelled"
+  | "overdue";
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  rate: number; // paise
+  gstRate: number;
+  amount: number; // paise
+  position?: number;
+}
+
+export interface InvoicePayment {
+  id: string;
+  amount: number; // paise
+  paidAt?: string | null;
+  method: "bank_transfer" | "upi" | "cash" | "card" | "cheque" | "other";
+  reference?: string | null;
+  notes?: string | null;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber?: string | null;
+  clientId: string;
+  clientName?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  status: InvoiceStatus;
+  rawStatus?: string;
+  issueDate?: string | null;
+  dueDate?: string | null;
+  isInterstate: boolean;
+  currency: string;
+  subtotal: number; // paise
+  taxTotal: number; // paise
+  cgst?: number;
+  sgst?: number;
+  igst?: number;
+  total: number; // paise
+  paidAmount: number; // paise
+  balanceDue: number; // paise
+  notes?: string | null;
+  terms?: string | null;
+  bankDetails?: string | null;
+  items?: InvoiceItem[];
+  payments?: InvoicePayment[];
+  createdBy?: string | null;
+  createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

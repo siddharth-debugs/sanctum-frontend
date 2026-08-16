@@ -11,6 +11,12 @@ export interface DocumentFilters
   category?: string;
   clientId?: string;
   projectId?: string;
+  /**
+   * Folder scope. Omit for a flat list across every folder (e.g. search);
+   * `"root"` (or `""`) for root-level docs (folderId IS NULL); any folder id
+   * for that folder's contents.
+   */
+  folderId?: string;
   search?: string;
 }
 
@@ -28,6 +34,8 @@ export interface DocumentPatch {
   category?: DocumentCategory;
   clientId?: string | null;
   projectId?: string | null;
+  /** Move the file into a folder (id) or back to root (null). */
+  folderId?: string | null;
   clientVisible?: 0 | 1;
 }
 
@@ -37,6 +45,7 @@ export interface CreateDocumentInput {
   category: DocumentCategory;
   clientId?: string | null;
   projectId?: string | null;
+  folderId?: string | null;
   fileUrl: string;
   publicId: string;
   resourceType: Document["resourceType"];
@@ -97,8 +106,10 @@ export interface UploadDocumentInput {
   category: DocumentCategory;
   clientId?: string | null;
   projectId?: string | null;
+  /** Sanctum document folder (DB construct) to upload into. null/undefined = root. */
+  folderId?: string | null;
   clientVisible: 0 | 1;
-  /** Optional override for the Cloudinary folder. */
+  /** Optional override for the Cloudinary folder (storage path, unrelated). */
   folder?: string;
   /** 0–100 progress callback (best-effort, via XHR). */
   onProgress?: (pct: number) => void;
@@ -178,6 +189,7 @@ export function useUploadDocument() {
           category: input.category,
           clientId: input.clientId || undefined,
           projectId: input.projectId || undefined,
+          folderId: input.folderId || undefined,
           fileUrl: uploaded.secure_url,
           publicId: uploaded.public_id,
           resourceType: uploaded.resource_type,
@@ -206,6 +218,7 @@ export interface CreateLinkedDocumentInput {
   category: DocumentCategory;
   clientId?: string | null;
   projectId?: string | null;
+  folderId?: string | null;
   clientVisible: 0 | 1;
 }
 
@@ -247,6 +260,7 @@ export function useCreateLinkedDocument() {
           category: input.category,
           clientId: input.clientId || undefined,
           projectId: input.projectId || undefined,
+          folderId: input.folderId || undefined,
           fileUrl: input.url,
           publicId: undefined,
           resourceType: "raw",

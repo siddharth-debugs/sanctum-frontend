@@ -3,13 +3,7 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  Plus,
-  Sparkles,
-  CalendarDays,
-  LayoutList,
-  Share2,
-} from "lucide-react";
+import { Plus, Sparkles, CalendarDays, LayoutList } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
 import {
@@ -28,10 +22,9 @@ import { usePosts } from "@/hooks/use-posts";
 import { useClient } from "@/hooks/use-clients";
 import { useGenerateMonth } from "@/hooks/use-ai";
 import { useUsage } from "@/hooks/use-usage";
-import { PortalShareDialog } from "@/components/app/portal-share-dialog";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { formatDateTime } from "@/lib/utils";
-import { useCan, useSession } from "../../../session-context";
+import { useCan } from "../../../session-context";
 import type { Post } from "@/lib/api/types";
 
 const CURRENT_MONTH = "2026-06";
@@ -82,11 +75,7 @@ export default function ClientCalendarPage({
   const { data: posts, isLoading, error: postsError } = usePosts(clientId);
   const generateMonth = useGenerateMonth(clientId);
   const { data: usage } = useUsage();
-  const shareDialog = useDisclosure();
   const { canManage } = useCan();
-  const session = useSession();
-  const isPrivileged =
-    session.user.role === "owner" || session.user.role === "admin";
 
   const ai = usage?.usage?.ai;
   const aiIndicator = ai
@@ -207,7 +196,7 @@ export default function ClientCalendarPage({
           </>
         }
         title={`${client?.name ?? "Client"} — June`}
-        description="Plan the month, send posts for approval, and share a branded read-only portal."
+        description="Plan the month and send posts to the client for approval in their portal."
         actions={
           // items-start keeps every button top-aligned; the AI-usage caption
           // hangs below "Generate" without nudging the others out of line.
@@ -230,11 +219,6 @@ export default function ClientCalendarPage({
                   </span>
                 )}
               </div>
-            )}
-            {isPrivileged && (
-              <Button variant="outline" onClick={() => shareDialog.onOpen()}>
-                <Share2 className="size-4" /> Share portal
-              </Button>
             )}
             {canManage("clients") && (
               <Button
@@ -322,12 +306,6 @@ export default function ClientCalendarPage({
           viewModal.onClose();
           formSheet.onOpen(p);
         }}
-      />
-      <PortalShareDialog
-        open={shareDialog.open}
-        onOpenChange={shareDialog.setOpen}
-        clientId={clientId}
-        clientName={client?.name ?? "this client"}
       />
     </div>
   );

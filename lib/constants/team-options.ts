@@ -23,6 +23,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
   admin: "Admin",
   member: "Member",
+  client: "Client",
 };
 
 /** Evergreen badge classes per role (token color-mix tints, never purple). */
@@ -33,6 +34,8 @@ export const ROLE_BADGE_CLASS: Record<Role, string> = {
     "text-accent bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]",
   member:
     "text-muted-foreground bg-[color-mix(in_srgb,var(--muted-foreground)_12%,transparent)]",
+  client:
+    "text-success bg-[color-mix(in_srgb,var(--success)_14%,transparent)]",
 };
 
 /**

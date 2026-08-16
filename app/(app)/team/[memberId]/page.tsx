@@ -71,6 +71,7 @@ import {
   useUpdateMember,
   useDeleteMember,
   useSendMemberReset,
+  type UpdateMemberInput,
 } from "@/hooks/use-team";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { initials, formatDate } from "@/lib/utils";
@@ -81,7 +82,7 @@ import { PermissionsEditor } from "@/components/app/permissions-editor";
 import { MemberAttendancePanel } from "@/components/app/member-attendance";
 import { fullAccess } from "@/lib/permissions";
 import { useCustomRoles } from "@/hooks/use-roles";
-import { useCan } from "../../session-context";
+import { useCan, useSession, canManageTargetRole } from "../../session-context";
 import type {
   PermissionMap,
   Role,
@@ -155,12 +156,27 @@ function EmptyState({
 /** Role + module-permission editor (owner/admin only; owner target locked). */
 function AccessTab({ member }: { member: TeamMemberDetail }) {
   const { canManage } = useCan();
+  const session = useSession();
   const update = useUpdateMember(member.id);
   const { data: customRoles } = useCustomRoles(canManage("team"));
+  const [ownerConfirmOpen, setOwnerConfirmOpen] = React.useState(false);
 
   const isOwnerTarget = member.role === "owner";
-  // Only owner/admin with Team "manage" may edit (the API enforces this too).
-  const editable = canManage("team") && !isOwnerTarget;
+  const isSelf = member.id === session.user.id;
+  const isOwnerCaller = session.user.role === "owner";
+  const canManageThisTarget = canManageTargetRole(
+    session.user.role,
+    member.role,
+  );
+  // Only owner/admin with Team "manage" may edit — never yourself, never a
+  // target at/above your tier, never the owner (the API enforces this too).
+  const editable =
+    canManage("team") && !isOwnerTarget && !isSelf && canManageThisTarget;
+  const lockReason = isSelf
+    ? "You can't change your own role or permissions."
+    : !canManageThisTarget
+      ? "You can only manage members below your role."
+      : undefined;
 
   const initialPerms = isOwnerTarget
     ? fullAccess()
@@ -188,15 +204,22 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
     !selectedCustom && JSON.stringify(perms) !== JSON.stringify(initialPerms);
   const dirty = roleChanged || permsChanged;
 
-  const onSave = () => {
-    const payload = selectedCustom
+  const commitSave = () => {
+    const payload: UpdateMemberInput = selectedCustom
       ? { customRoleId: roleKey } // role drives; server clears personal overrides
-      : {
-          ...(roleChanged ? { role: roleKey as Role, customRoleId: null } : {}),
-          permissions: perms,
-        };
+      : roleKey === "owner"
+        ? { role: "owner", customRoleId: null } // owner is always full-access
+        : {
+            ...(roleChanged
+              ? { role: roleKey as Role, customRoleId: null }
+              : {}),
+            permissions: perms,
+          };
     update.mutate(payload, {
-      onSuccess: () => toast.success("Access updated"),
+      onSuccess: () => {
+        toast.success("Access updated");
+        setOwnerConfirmOpen(false);
+      },
       onError: (err) =>
         toast.error(
           err instanceof ApiError ? err.message : "Couldn't update access",
@@ -204,7 +227,17 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
     });
   };
 
+  // Promoting someone to Owner is powerful — confirm first (owner caller only).
+  const onSave = () => {
+    if (!selectedCustom && roleKey === "owner" && roleChanged) {
+      setOwnerConfirmOpen(true);
+      return;
+    }
+    commitSave();
+  };
+
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -236,6 +269,7 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
               <SelectContent>
                 <SelectItem value="member">Member</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                {isOwnerCaller && <SelectItem value="owner">Owner</SelectItem>}
                 {(customRoles ?? []).map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     {r.name}
@@ -243,11 +277,19 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              {selectedCustom
-                ? `Permissions come from the “${selectedCustom.name}” role (base: ${selectedCustom.baseRole}). Edit it in Settings → Roles & Permissions.`
-                : "Admins manage clients, team, and settings. The grid below sets this member’s personal overrides on top of the role."}
-            </p>
+            {lockReason ? (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Lock className="size-3" /> {lockReason}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {selectedCustom
+                  ? `Permissions come from the “${selectedCustom.name}” role (base: ${selectedCustom.baseRole}). Edit it in Settings → Roles & Permissions.`
+                  : roleKey === "owner"
+                    ? "Owners have full, unrestricted access to everything in the workspace."
+                    : "Admins manage clients, team, and settings. The grid below sets this member’s personal overrides on top of the role."}
+              </p>
+            )}
           </div>
         )}
 
@@ -271,6 +313,35 @@ function AccessTab({ member }: { member: TeamMemberDetail }) {
         )}
       </CardContent>
     </Card>
+
+      {/* Confirm before promoting a member to Owner (owner caller only). */}
+      <Dialog open={ownerConfirmOpen} onOpenChange={setOwnerConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Make {member.fullName ?? member.email} an owner?
+            </DialogTitle>
+            <DialogDescription>
+              Owners have full, unrestricted access — including billing, team,
+              and settings — and can manage every other member. This can&apos;t
+              be limited by module permissions.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setOwnerConfirmOpen(false)}
+              disabled={update.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={commitSave} disabled={update.isPending}>
+              {update.isPending ? "Saving…" : "Make owner"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -397,6 +468,7 @@ export default function MemberDetailPage({
   const { memberId } = React.use(params);
   const router = useRouter();
   const { canManage } = useCan();
+  const session = useSession();
   const canManageTeam = canManage("team");
   const { data: member, isLoading, error } = useTeamMember(memberId);
   const update = useUpdateMember(memberId);
@@ -436,7 +508,16 @@ export default function MemberDetailPage({
   const name = member.fullName ?? member.email;
   const pct = Math.round(member.utilizationPct ?? 0);
   const isOwner = member.role === "owner";
+  const isSelf = member.id === session.user.id;
   const isActive = member.status === "active";
+  // Status changes (deactivate) + removal + password reset require managing a
+  // target STRICTLY below you — never yourself, never the owner. The backend
+  // enforces this; we hide the controls so they can't be attempted.
+  const canAdminister =
+    canManageTeam &&
+    !isOwner &&
+    !isSelf &&
+    canManageTargetRole(session.user.role, member.role);
 
   const onToggleStatus = () => {
     update.mutate(
@@ -510,7 +591,7 @@ export default function MemberDetailPage({
               <Button variant="outline" onClick={() => editSheet.onOpen()}>
                 <Pencil className="size-4" /> Edit
               </Button>
-              {!isOwner && (
+              {canAdminister && (
                 <>
                   <Button
                     variant="outline"

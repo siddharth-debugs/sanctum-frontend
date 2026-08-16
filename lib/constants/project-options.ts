@@ -21,9 +21,13 @@ export interface TaskStatusMeta {
   dot: string;
 }
 
-/** Ordered left→right exactly as the board columns render. */
+/**
+ * Ordered left→right exactly as the board columns render. The "Backlog" column
+ * was retired — new tasks start in "To Do" and existing backlog tasks were
+ * migrated to To Do. ('backlog' remains a valid enum value for any legacy row,
+ * but it is no longer offered as a board column or a status option.)
+ */
 export const TASK_STATUSES: TaskStatusMeta[] = [
-  { value: "backlog", label: "Backlog", dot: "var(--muted-foreground)" },
   { value: "todo", label: "To Do", dot: "var(--primary)" },
   { value: "in_progress", label: "In Progress", dot: "var(--accent)" },
   { value: "in_review", label: "In Review", dot: "var(--warning)" },

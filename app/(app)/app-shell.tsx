@@ -94,6 +94,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [me.isError, me.error, router]);
 
+  // A `client` login is not agency staff — it has its own portal area and no
+  // access to any agency module. Bounce it out of the (app) shell.
+  React.useEffect(() => {
+    if (me.data?.user?.role === "client") {
+      router.replace("/client");
+    }
+  }, [me.data, router]);
+
   const hasTokens = typeof window !== "undefined" && Boolean(getAccessToken() || getRefreshToken());
   const unauthed = me.isError && (isUnauthenticated(me.error) || !hasTokens);
 
@@ -127,6 +135,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+
+  // While the client-role redirect above runs, don't flash the agency shell.
+  if (me.data.user.role === "client") {
+    return <Splash />;
+  }
 
   return (
     <SessionProvider value={me.data}>

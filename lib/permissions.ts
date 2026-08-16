@@ -123,11 +123,15 @@ export function canDelete(
  */
 const ROUTE_MODULES: Array<{ base: string; module: ModuleKey }> = [
   { base: "/dashboard", module: "dashboard" },
+  { base: "/leads", module: "clients" },
   { base: "/clients", module: "clients" },
   { base: "/projects", module: "projects" },
+  { base: "/tasks", module: "projects" },
   { base: "/team", module: "team" },
   { base: "/attendance", module: "attendance" },
   { base: "/calendar", module: "calendar" },
+  { base: "/proposals", module: "clients" },
+  { base: "/agreements", module: "documents" },
   { base: "/messages", module: "messages" },
   { base: "/documents", module: "documents" },
   { base: "/sheets", module: "sheets" },

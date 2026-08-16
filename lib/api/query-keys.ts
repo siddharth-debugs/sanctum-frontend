@@ -112,4 +112,26 @@ export const queryKeys = {
   notifications: (unreadOnly: boolean) =>
     ["notifications", unreadOnly ? "unread" : "all"] as const,
   notificationsUnread: ["notifications", "unread-count"] as const,
+  // Tasks (Cross-Project Team Tasks)
+  allTasks: (filters?: Record<string, unknown>) =>
+    ["tasks", "all", filters ?? {}] as const,
+  myTasks: ["tasks", "me"] as const,
+  // Proposals
+  proposals: (filters?: Record<string, unknown>) =>
+    ["proposals", filters ?? {}] as const,
+  proposal: (id: string) => ["proposals", id] as const,
+  proposalTemplates: ["proposals", "templates"] as const,
+  // Agreements
+  agreements: (filters?: Record<string, unknown>) =>
+    ["agreements", filters ?? {}] as const,
+  agreement: (id: string) => ["agreements", id] as const,
+  agreementTemplates: ["agreements", "templates"] as const,
+  // Invoices
+  invoices: (filters?: Record<string, unknown>) =>
+    ["invoices", filters ?? {}] as const,
+  invoice: (id: string) => ["invoices", id] as const,
+  // Client Portal Additions
+  clientProposals: ["client-portal", "proposals"] as const,
+  clientAgreements: ["client-portal", "agreements"] as const,
+  clientInvoices: ["client-portal", "invoices"] as const,
 };

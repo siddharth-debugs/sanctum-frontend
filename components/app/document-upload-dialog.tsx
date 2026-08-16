@@ -61,26 +61,33 @@ export function DocumentUploadDialog({
   lockedClientId,
   /** Pre-selected (and locked) project — used from the project Files tab. */
   lockedProjectId,
+  /** Sanctum document folder to upload into (DB construct). null/undefined = root. */
+  folderId,
   defaultCategory = "misc",
   /** Pre-set the client-portal visibility (e.g. the "Client-facing" folder). */
   defaultClientVisible = false,
   /** Open on the "upload" or "link" tab first. */
   defaultMode = "upload",
+  /** Hide the cloud-link tab entirely — file upload only. */
+  uploadOnly = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lockedClientId?: string;
   lockedProjectId?: string;
+  folderId?: string | null;
   defaultCategory?: DocumentCategory;
   defaultClientVisible?: boolean;
   defaultMode?: "upload" | "link";
+  uploadOnly?: boolean;
 }) {
+  const initialMode = uploadOnly ? "upload" : defaultMode;
   const upload = useUploadDocument();
   const createLink = useCreateLinkedDocument();
   const { data: clients } = useClients();
   const { data: projects } = useProjects();
 
-  const [mode, setMode] = React.useState<"upload" | "link">(defaultMode);
+  const [mode, setMode] = React.useState<"upload" | "link">(initialMode);
   const [file, setFile] = React.useState<File | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
@@ -100,12 +107,12 @@ export function DocumentUploadDialog({
 
   React.useEffect(() => {
     if (open) {
-      setMode(defaultMode);
+      setMode(initialMode);
       setFile(null);
       setProgress(0);
       setDragging(false);
       form.reset({
-        mode: defaultMode,
+        mode: initialMode,
         name: "",
         url: "",
         category: defaultCategory,
@@ -120,7 +127,7 @@ export function DocumentUploadDialog({
     lockedProjectId,
     defaultCategory,
     defaultClientVisible,
-    defaultMode,
+    initialMode,
     form,
   ]);
 
@@ -173,6 +180,7 @@ export function DocumentUploadDialog({
           category: values.category,
           clientId: values.clientId || null,
           projectId: values.projectId || null,
+          folderId: folderId ?? null,
           clientVisible: values.clientVisible ? 1 : 0,
           onProgress: setProgress,
         },
@@ -199,6 +207,7 @@ export function DocumentUploadDialog({
           category: values.category,
           clientId: values.clientId || null,
           projectId: values.projectId || null,
+          folderId: folderId ?? null,
           clientVisible: values.clientVisible ? 1 : 0,
         },
         {
@@ -223,27 +232,33 @@ export function DocumentUploadDialog({
     <Dialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
       <DialogContent className="glass-strong sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-display">Add Document</DialogTitle>
+          <DialogTitle className="font-display">
+            {uploadOnly ? "Upload File" : "Add Document"}
+          </DialogTitle>
           <DialogDescription>
-            Upload a file directly or attach a Google Drive / OneDrive link to save storage space.
+            {uploadOnly
+              ? "Upload a file to this folder."
+              : "Upload a file directly or attach a Google Drive / OneDrive link to save storage space."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Mode Selector */}
-        <Tabs
-          value={mode}
-          onValueChange={(val) => setMode(val as "upload" | "link")}
-          className="w-full"
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="upload" disabled={pending} className="gap-2">
-              <UploadCloud className="size-4" /> Upload File
-            </TabsTrigger>
-            <TabsTrigger value="link" disabled={pending} className="gap-2">
-              <HardDrive className="size-4 text-emerald-500" /> Google Drive / OneDrive
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Mode Selector (hidden when the surface only allows file uploads) */}
+        {!uploadOnly && (
+          <Tabs
+            value={mode}
+            onValueChange={(val) => setMode(val as "upload" | "link")}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload" disabled={pending} className="gap-2">
+                <UploadCloud className="size-4" /> Upload File
+              </TabsTrigger>
+              <TabsTrigger value="link" disabled={pending} className="gap-2">
+                <HardDrive className="size-4 text-emerald-500" /> Google Drive / OneDrive
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
         <Form {...form}>
           <form

@@ -18,9 +18,15 @@ import {
   ExternalLink,
   HardDrive,
   Cloud,
+  Folder,
+  FolderPlus,
+  ChevronRight,
+  Pencil,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,13 +48,25 @@ import {
   useDeleteDocument,
   useUpdateDocument,
 } from "@/hooks/use-documents";
+import {
+  useFolders,
+  useCreateFolder,
+  useRenameFolder,
+  useDeleteFolder,
+  type DocumentFolder,
+} from "@/hooks/use-document-folders";
 import { DocumentUploadDialog } from "@/components/app/document-upload-dialog";
+import { useCan } from "../../../session-context";
 import { ApiError } from "@/lib/api/client";
 import { cn, formatBytes, formatDate } from "@/lib/utils";
 import type { Document } from "@/lib/api/types";
 import { ListSkeleton } from "./shared";
 
 type Folder = "internal" | "external";
+interface Crumb {
+  id: string | null;
+  name: string;
+}
 
 /** A document is a cloud link (Drive/OneDrive/…) rather than an uploaded file
  * when it has no Cloudinary publicId. */
@@ -87,18 +105,9 @@ function FileIcon({ doc }: { doc: Document }) {
  * Project files, split into two folders:
  *  - Internal: agency-only (clientVisible = false)
  *  - Client-facing: shared in the client portal (clientVisible = true)
+ * Each split has its own nestable folder tree.
  */
 export function FilesTab({ projectId }: { projectId: string }) {
-  const { data: docs, isLoading } = useDocuments({ projectId });
-  const internal = React.useMemo(
-    () => (docs ?? []).filter((d) => !d.clientVisible),
-    [docs],
-  );
-  const external = React.useMemo(
-    () => (docs ?? []).filter((d) => d.clientVisible),
-    [docs],
-  );
-
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <FolderSection
@@ -107,8 +116,6 @@ export function FilesTab({ projectId }: { projectId: string }) {
         description="Only your agency team can see these."
         icon={<FolderLock className="size-5 text-muted-foreground" />}
         projectId={projectId}
-        docs={internal}
-        loading={isLoading}
       />
       <FolderSection
         folder="external"
@@ -116,8 +123,6 @@ export function FilesTab({ projectId }: { projectId: string }) {
         description="Shared in the client portal — visible to the client and your team."
         icon={<Users className="size-5 text-success" />}
         projectId={projectId}
-        docs={external}
-        loading={isLoading}
       />
     </div>
   );
@@ -129,23 +134,76 @@ function FolderSection({
   description,
   icon,
   projectId,
-  docs,
-  loading,
 }: {
   folder: Folder;
   title: string;
   description: string;
   icon: React.ReactNode;
   projectId: string;
-  docs: Document[];
-  loading: boolean;
 }) {
-  const upload = useUploadDocument();
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = React.useState(false);
-  const [linkOpen, setLinkOpen] = React.useState(false);
-  const clientVisible = folder === "external" ? 1 : 0;
+  const isClientFacing = folder === "external";
+  const { canManage } = useCan();
+  const canEdit = canManage("documents");
 
+  const [path, setPath] = React.useState<Crumb[]>([{ id: null, name: title }]);
+  const currentFolderId = path[path.length - 1].id;
+  const currentFolderName = path[path.length - 1].name;
+
+  const upload = useUploadDocument();
+  const createFolder = useCreateFolder();
+  const renameFolder = useRenameFolder();
+  const deleteFolder = useDeleteFolder();
+
+  const [uploading, setUploading] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
+
+  // The shared Add-Document dialog, opened file-upload-only from this surface.
+  const [uploadOpen, setUploadOpen] = React.useState(false);
+
+  // Folder dialogs
+  const [folderDialog, setFolderDialog] = React.useState<
+    { mode: "create" | "rename"; folder?: DocumentFolder } | null
+  >(null);
+  const [folderName, setFolderName] = React.useState("");
+  const [deleteTarget, setDeleteTarget] = React.useState<DocumentFolder | null>(
+    null,
+  );
+
+  // Folders + docs at the current level, filtered to this section's visibility.
+  const foldersQuery = useFolders({
+    projectId,
+    parentId: currentFolderId ?? "root",
+  });
+  const folders = React.useMemo(
+    () =>
+      (foldersQuery.data ?? []).filter(
+        (f) => Boolean(f.clientVisible) === isClientFacing,
+      ),
+    [foldersQuery.data, isClientFacing],
+  );
+
+  const docsQuery = useDocuments({
+    projectId,
+    folderId: currentFolderId ?? "root",
+  });
+  const docs = React.useMemo(
+    () =>
+      (docsQuery.data ?? []).filter(
+        (d) => Boolean(d.clientVisible) === isClientFacing,
+      ),
+    [docsQuery.data, isClientFacing],
+  );
+
+  const loading = foldersQuery.isLoading || docsQuery.isLoading;
+
+  function openFolder(f: DocumentFolder) {
+    setPath((p) => [...p, { id: f.id, name: f.name }]);
+  }
+  function navigateTo(index: number) {
+    setPath((p) => p.slice(0, index + 1));
+  }
+
+  // Quick drag-and-drop upload straight into the current folder.
   async function onFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
@@ -157,7 +215,8 @@ function FolderSection({
           name: file.name,
           category: "misc",
           projectId,
-          clientVisible: clientVisible as 0 | 1,
+          folderId: currentFolderId,
+          clientVisible: isClientFacing ? 1 : 0,
         });
         ok += 1;
       } catch {
@@ -167,11 +226,71 @@ function FolderSection({
     setUploading(false);
     if (ok > 0) {
       toast.success(
-        `${ok} file${ok > 1 ? "s" : ""} uploaded to ${title.toLowerCase()}`,
+        `${ok} file${ok > 1 ? "s" : ""} uploaded to ${currentFolderName.toLowerCase()}`,
       );
     }
-    if (inputRef.current) inputRef.current.value = "";
   }
+
+  function submitFolder() {
+    const name = folderName.trim();
+    if (!name || !folderDialog) return;
+    if (folderDialog.mode === "create") {
+      createFolder.mutate(
+        {
+          name,
+          projectId,
+          parentId: currentFolderId,
+          clientVisible: isClientFacing,
+        },
+        {
+          onSuccess: () => {
+            toast.success("Folder created");
+            setFolderDialog(null);
+          },
+        },
+      );
+    } else if (folderDialog.folder) {
+      renameFolder.mutate(
+        { id: folderDialog.folder.id, name },
+        {
+          onSuccess: () => {
+            toast.success("Folder renamed");
+            setFolderDialog(null);
+          },
+        },
+      );
+    }
+  }
+
+  function confirmDeleteFolder() {
+    if (!deleteTarget) return;
+    deleteFolder.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success("Folder deleted — its files moved up");
+        setDeleteTarget(null);
+      },
+    });
+  }
+
+  const empty = !loading && folders.length === 0 && docs.length === 0;
+
+  const dropHandlers = canEdit
+    ? {
+        onDragOver: (e: React.DragEvent) => {
+          e.preventDefault();
+          if (!dragging) setDragging(true);
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          // Only clear when leaving the panel itself, not its children.
+          if (e.currentTarget === e.target) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          setDragging(false);
+          onFiles(e.dataTransfer.files);
+        },
+      }
+    : {};
 
   return (
     <section className="flex flex-col rounded-xl border bg-card">
@@ -182,76 +301,290 @@ function FolderSection({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 font-medium">
             {title}
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
-              {docs.length}
-            </span>
+            {folders.length + docs.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                {folders.length + docs.length}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
         </div>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => onFiles(e.target.files)}
-        />
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setLinkOpen(true)}
-            title="Attach a Google Drive / OneDrive link (uses 0 storage)"
-          >
-            <Link2 className="size-4" />
-            Add link
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Upload className="size-4" />
-            )}
-            Upload
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setFolderName("");
+                setFolderDialog({ mode: "create" });
+              }}
+              title="Create a folder here"
+            >
+              <FolderPlus className="size-4" />
+              Folder
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploading}
+              onClick={() => setUploadOpen(true)}
+            >
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
+              Upload
+            </Button>
+          </div>
+        )}
       </header>
 
+      {/* Breadcrumb (only once navigated into a subfolder) */}
+      {path.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1 border-b px-4 py-2 text-xs text-muted-foreground">
+          {path.map((c, i) => {
+            const last = i === path.length - 1;
+            return (
+              <React.Fragment key={`${c.id ?? "root"}-${i}`}>
+                {i > 0 && <ChevronRight className="size-3 opacity-40" />}
+                {last ? (
+                  <span className="font-medium text-foreground">{c.name}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigateTo(i)}
+                    className="transition-colors hover:text-foreground"
+                  >
+                    {c.name}
+                  </button>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+
       <DocumentUploadDialog
-        open={linkOpen}
-        onOpenChange={setLinkOpen}
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
         lockedProjectId={projectId}
-        defaultClientVisible={folder === "external"}
-        defaultMode="link"
+        folderId={currentFolderId}
+        defaultClientVisible={isClientFacing}
+        defaultMode="upload"
       />
 
-      <div className="flex-1 p-2">
+      <div
+        {...dropHandlers}
+        className={cn(
+          "relative flex-1 p-3",
+          dragging &&
+            "rounded-b-xl outline-2 outline-dashed outline-primary/60 -outline-offset-4",
+        )}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-2 z-10 grid place-items-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] text-sm font-medium text-primary">
+            <span className="flex items-center gap-2">
+              <Upload className="size-4" /> Drop to upload here
+            </span>
+          </div>
+        )}
+
         {loading ? (
-          <div className="p-2">
+          <div className="p-1">
             <ListSkeleton rows={2} />
           </div>
-        ) : docs.length === 0 ? (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-          >
-            <Upload className="size-5" />
-            No files yet — click to upload
-          </button>
+        ) : empty ? (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-9 text-center">
+            <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Upload className="size-5" />
+            </span>
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">No files yet</p>
+              <p className="text-xs text-muted-foreground">
+                {canEdit
+                  ? "Drag & drop a file, or use Upload to add a file or cloud link."
+                  : "Nothing has been added here yet."}
+              </p>
+            </div>
+            {canEdit && (
+              <Button size="sm" className="mt-1" onClick={() => setUploadOpen(true)}>
+                <Upload className="size-4" /> Upload
+              </Button>
+            )}
+          </div>
         ) : (
-          <ul className="space-y-0.5">
-            {docs.map((doc) => (
-              <DocRow key={doc.id} doc={doc} folder={folder} />
-            ))}
-          </ul>
+          <div className="space-y-3">
+            {folders.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {folders.map((f) => (
+                  <FolderCard
+                    key={f.id}
+                    folder={f}
+                    canEdit={canEdit}
+                    onOpen={() => openFolder(f)}
+                    onRename={() => {
+                      setFolderName(f.name);
+                      setFolderDialog({ mode: "rename", folder: f });
+                    }}
+                    onDelete={() => setDeleteTarget(f)}
+                  />
+                ))}
+              </div>
+            )}
+            {docs.length > 0 && (
+              <ul className="space-y-0.5">
+                {docs.map((doc) => (
+                  <DocRow key={doc.id} doc={doc} folder={folder} />
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Create / rename folder */}
+      <Dialog
+        open={folderDialog !== null}
+        onOpenChange={(o) => !o && setFolderDialog(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {folderDialog?.mode === "rename" ? "Rename folder" : "New folder"}
+            </DialogTitle>
+            {folderDialog?.mode !== "rename" && (
+              <DialogDescription>
+                Create a folder in{" "}
+                <span className="font-medium text-foreground">
+                  {currentFolderName}
+                </span>
+                .
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor={`folder-name-${folder}`}>Folder name</Label>
+            <Input
+              id={`folder-name-${folder}`}
+              autoFocus
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitFolder();
+              }}
+              placeholder="e.g. Deliverables"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setFolderDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={submitFolder}
+              disabled={
+                !folderName.trim() ||
+                createFolder.isPending ||
+                renameFolder.isPending
+              }
+            >
+              {(createFolder.isPending || renameFolder.isPending) && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              {folderDialog?.mode === "rename" ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete folder */}
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete folder?</DialogTitle>
+            <DialogDescription>
+              &ldquo;{deleteTarget?.name}&rdquo; will be removed. Its files and
+              subfolders are kept and moved back up — nothing is deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteFolder}
+              disabled={deleteFolder.isPending}
+            >
+              {deleteFolder.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
+              Delete folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
+  );
+}
+
+function FolderCard({
+  folder,
+  canEdit,
+  onOpen,
+  onRename,
+  onDelete,
+}: {
+  folder: DocumentFolder;
+  canEdit: boolean;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="group flex items-center gap-3 rounded-xl border bg-card px-3 py-2.5 transition-colors hover:border-primary/40">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-primary">
+          <Folder className="size-4" />
+        </span>
+        <span className="truncate text-sm font-medium group-hover:text-primary">
+          {folder.name}
+        </span>
+      </button>
+      {canEdit && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 opacity-60 group-hover:opacity-100"
+              aria-label="Folder actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onOpen}>
+              <Folder className="size-4" /> Open
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRename}>
+              <Pencil className="size-4" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <Trash2 className="size-4" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
 

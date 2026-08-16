@@ -19,7 +19,7 @@ export interface TeamFilters extends Record<string, string | boolean | undefined
   activeOnly?: boolean;
 }
 
-/** GET /team — members in the agency (returns a plain ARRAY). */
+/** GET /team — agency STAFF only (clients are excluded server-side). */
 export function useTeam(filters?: TeamFilters) {
   return useQuery({
     queryKey: queryKeys.team(filters),
@@ -31,6 +31,28 @@ export function useTeam(filters?: TeamFilters) {
           activeOnly: filters?.activeOnly ? "true" : undefined,
         },
       }),
+  });
+}
+
+/** A client-login account (role='client') — NOT an agency team member. */
+export interface ClientUser {
+  id: string;
+  fullName: string | null;
+  email: string;
+  status: "active" | "disabled";
+  lastLoginAt: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  /** 0 = access to ALL of the brand's projects; N = restricted to N projects. */
+  projectScope: number;
+  joinedAt: string;
+}
+
+/** GET /team/client-users — client portal logins, listed separately from staff. */
+export function useClientUsers() {
+  return useQuery({
+    queryKey: ["team", "client-users"] as const,
+    queryFn: () => api<ClientUser[]>("/team/client-users"),
   });
 }
 
@@ -73,6 +95,10 @@ export interface InviteMemberInput {
   hourlyRate?: number;
   weeklyCapacityHrs?: number;
   skills?: string[];
+  /** When `role: "client"`, the brand (client) the portal user belongs to. Required for client invites. */
+  clientId?: string;
+  /** Optional project scope for a client invite; empty/undefined = all of the client's projects. */
+  projectIds?: string[];
 }
 
 export interface InviteMemberResult {

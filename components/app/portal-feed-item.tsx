@@ -28,8 +28,8 @@ import { PortalMediaLightbox } from "@/components/app/portal-media-lightbox";
 import { useThreadCount } from "@/components/app/portal-comments";
 import { cn, formatDateTime } from "@/lib/utils";
 import { PLATFORM_NAME, normalizePlatform } from "@/lib/portal-handles";
-import { portalApi } from "@/lib/api/portal-client";
 import { ApiError } from "@/lib/api/client";
+import type { PostReviewApi } from "@/lib/api/post-review";
 import type { PortalPost } from "@/lib/api/types";
 
 type Decision = "approved" | "changes_requested";
@@ -57,20 +57,18 @@ function lockedCopy(status: PortalPost["status"], fresh: boolean) {
  * preserved; only locked statuses hide the action buttons.
  */
 export function PortalFeedItem({
-  token,
+  api,
   post,
   view,
-  actorLabel,
   canApprove,
   canComment,
   agencyName,
   brand,
   onOpenComments,
 }: {
-  token: string;
+  api: PostReviewApi;
   post: PortalPost;
   view: ViewMode;
-  actorLabel: string;
   canApprove: boolean;
   canComment: boolean;
   agencyName: string;
@@ -88,7 +86,7 @@ export function PortalFeedItem({
   const [lightboxStart, setLightboxStart] = React.useState(0);
 
   const qc = useQueryClient();
-  const commentCount = useThreadCount(token, post.id, canComment);
+  const commentCount = useThreadCount(api, post.id, canComment);
 
   // Platform switcher: which preview chrome is showing.
   const platforms = React.useMemo(() => {
@@ -115,7 +113,11 @@ export function PortalFeedItem({
   const decide = async (d: Decision) => {
     setBusy(d);
     try {
-      await portalApi.decide(token, post.id, d, d === "changes_requested" ? note.trim() || undefined : undefined, actorLabel);
+      await api.decide(
+        post.id,
+        d,
+        d === "changes_requested" ? note.trim() || undefined : undefined,
+      );
       setStatus(d === "approved" ? "approved" : "changes_requested");
       if (d === "approved") {
         setJustApproved(true);
@@ -125,7 +127,7 @@ export function PortalFeedItem({
         setShowChanges(false);
         setNote("");
       }
-      await qc.invalidateQueries({ queryKey: ["portal"] });
+      await qc.invalidateQueries({ queryKey: api.invalidateKey });
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Couldn't submit your decision",

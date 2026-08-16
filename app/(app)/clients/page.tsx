@@ -42,7 +42,7 @@ import { useClients } from "@/hooks/use-clients";
 import { api, ApiError } from "@/lib/api/client";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { initials, formatDate, cn } from "@/lib/utils";
-import { useSession } from "../session-context";
+import { useCan } from "../session-context";
 import type { Client } from "@/lib/api/types";
 
 /** Social handles (excluding the synthetic `sector` key the backend folds in). */
@@ -70,16 +70,16 @@ export default function ClientsPage() {
 
 function ClientsContent() {
   const { data, isLoading, error } = useClients();
-  const session = useSession();
   const searchParams = useSearchParams();
   // Deep link support: /clients?tab=leads&lead=<id> opens the Leads tab and
   // (optionally) auto-opens that lead's detail sheet.
   const initialTab = searchParams.get("tab") === "leads" ? "leads" : "directory";
   const [tab, setTab] = React.useState(initialTab);
   const leadParam = searchParams.get("lead");
-  // Create/edit/archive are owner/admin-only on the backend — gate the UI to match.
-  const canManage =
-    session.user.role === "owner" || session.user.role === "admin";
+  // Create/edit/archive is governed by the 'clients' module (edit tier) on the
+  // backend — managers with clients access qualify, not just owner/admin.
+  const { can } = useCan();
+  const canManage = can("clients", "edit");
   const qc = useQueryClient();
   const formSheet = useDisclosure<Client | null>();
   const viewModal = useDisclosure<Client>();
@@ -292,8 +292,7 @@ function ClientsContent() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="directory">Directory</TabsTrigger>
-          <TabsTrigger value="leads">Leads</TabsTrigger>
-          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="pipeline">Deals Pipeline</TabsTrigger>
           <TabsTrigger value="followups">Follow-ups</TabsTrigger>
         </TabsList>
 
@@ -323,10 +322,6 @@ function ClientsContent() {
               ) : undefined
             }
           />
-        </TabsContent>
-
-        <TabsContent value="leads" className="mt-5">
-          <LeadsBoard initialLeadId={leadParam} />
         </TabsContent>
 
         <TabsContent value="pipeline" className="mt-5">

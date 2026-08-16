@@ -6,6 +6,7 @@ import type {
   MeResponse,
   ModuleKey,
   PermissionMap,
+  Persona,
 } from "@/lib/api/types";
 import { canManage, canView, fullAccess, meetsLevel } from "@/lib/permissions";
 import { useThemeVariant } from "@/theme/theme-provider";
@@ -49,6 +50,31 @@ export function useSession(): MeResponse {
 export function usePermissions(): PermissionMap {
   const session = useSession();
   return session.permissions ?? fullAccess();
+}
+
+/** The signed-in user's persona (owner|admin|manager|employee|client). */
+export function usePersona(): Persona {
+  const session = useSession();
+  return session.persona ?? session.user.persona ?? "employee";
+}
+
+/** True when the signed-in user is a client (portal) account. */
+export function useIsClient(): boolean {
+  return useSession().user.role === "client";
+}
+
+/** True when the signed-in user is the agency owner (strict financials & pricing access). */
+export function useIsOwner(): boolean {
+  return useSession().user.role === "owner";
+}
+
+/** True when the caller can act on `targetRole` (owner acts on all; a
+ * non-owner only on strictly-lower tiers). Mirrors the backend rank ceiling. */
+export function canManageTargetRole(callerRole: string, targetRole: string): boolean {
+  const rank: Record<string, number> = { client: 0, member: 1, admin: 2, owner: 3 };
+  if (callerRole === "owner") return true;
+  if (callerRole === "client") return false;
+  return (rank[targetRole] ?? 0) < (rank[callerRole] ?? 0);
 }
 
 /**

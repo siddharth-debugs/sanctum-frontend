@@ -50,9 +50,14 @@ import {
   // capturePunchLocation resolves coords + a reverse-geocoded area on punch.
   capturePunchLocation,
   geoErrorMessage,
+  isCheckoutPending,
   useWhosIn,
   useTeamSummary,
 } from "@/hooks/use-attendance";
+import {
+  usePendingCheckoutRequests,
+  useDecideCheckoutRequest,
+} from "@/hooks/use-checkout-requests";
 import {
   useLeaves,
   useLeaveBalances,
@@ -75,7 +80,7 @@ import {
 } from "@/lib/constants/attendance-options";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import { useSession } from "../session-context";
+import { useSession, useCan } from "../session-context";
 import type {
   AttendanceCalendarDay,
   AttendanceStatus,
@@ -160,7 +165,16 @@ function TodayPunchCard() {
     const punch = await capturePunchLocation();
     setLocating(false);
     checkOut.mutate(punch, {
-      onSuccess: (r) => toast.success(`Checked out — ${fmtMinutes(r.workedMinutes)} logged`),
+      onSuccess: (r) => {
+        // Outside the office fence → held for approval, not finalized.
+        if (isCheckoutPending(r)) {
+          toast.message(
+            `Checkout sent for approval (you were ${r.distanceM} m outside the office).`,
+          );
+          return;
+        }
+        toast.success(`Checked out — ${fmtMinutes(r.workedMinutes)} logged`);
+      },
       onError: (e) =>
         toast.error(e instanceof ApiError ? e.message : "Couldn't check out"),
     });
@@ -574,8 +588,10 @@ function LeavesTab() {
 function ApprovalsTab() {
   const { data: leaves } = useLeaves("pending");
   const { data: regs } = useRegularizations("pending");
+  const { data: checkouts } = usePendingCheckoutRequests();
   const decideLeave = useDecideLeave();
   const decideReg = useDecideRegularization();
+  const decideCheckout = useDecideCheckoutRequest();
 
   const onLeave = (l: LeaveRequest, decision: "approved" | "rejected") =>
     decideLeave.mutate(
@@ -587,9 +603,52 @@ function ApprovalsTab() {
       { id: r.id, decision },
       { onSuccess: () => toast.success(`Request ${decision}`), onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed") },
     );
+  const onCheckout = (id: string, decision: "approved" | "rejected") =>
+    decideCheckout.mutate(
+      { id, decision },
+      { onSuccess: () => toast.success(`Checkout ${decision}`), onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed") },
+    );
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader><CardTitle>Pending checkout requests</CardTitle></CardHeader>
+        <CardContent className="pt-0">
+          {!checkouts || checkouts.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Nothing to review.</p>
+          ) : (
+            <ul className="divide-y">
+              {checkouts.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {c.userName} · {fmtDay(c.day)} · out {fmtTime(c.requestedCheckOutAt)}
+                      {c.distanceM != null && (
+                        <span className="ml-2 text-warning">{c.distanceM} m outside office</span>
+                      )}
+                    </p>
+                    {c.checkOutLocation && (
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="size-3 shrink-0" /> {c.checkOutLocation}
+                      </p>
+                    )}
+                    {c.reason && <p className="text-xs text-muted-foreground">{c.reason}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="text-success" onClick={() => onCheckout(c.id, "approved")}>
+                      <Check className="size-4" /> Approve
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onCheckout(c.id, "rejected")}>
+                      <X className="size-4" /> Reject
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>Pending leave requests</CardTitle></CardHeader>
         <CardContent className="pt-0">
@@ -774,7 +833,13 @@ function TeamTab() {
 
 export default function AttendancePage() {
   const session = useSession();
-  const isPrivileged = session.user.role === "owner" || session.user.role === "admin";
+  const { can } = useCan();
+  // Owners/admins always; plus an attendance manager (member-tier with `manage`
+  // on the Attendance module) so they can reach Approvals + Team.
+  const isPrivileged =
+    session.user.role === "owner" ||
+    session.user.role === "admin" ||
+    can("attendance", "manage");
 
   return (
     <div className="space-y-6">

@@ -44,9 +44,11 @@ export function ProjectCard({
             </Link>
           )}
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums">
-          {formatCurrency(project.contractValue, project.currency)}
-        </span>
+        {typeof project.contractValue === "number" && (
+          <span className="shrink-0 text-sm font-semibold tabular-nums">
+            {formatCurrency(project.contractValue, project.currency)}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

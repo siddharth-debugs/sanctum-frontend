@@ -281,7 +281,7 @@ export function ClientFormSheet({
                   label="Contact email"
                   type="email"
                   placeholder="team@client.com"
-                  description="Where the welcome portal link is sent."
+                  description="The client's primary point of contact."
                 />
               </div>
               <SelectField

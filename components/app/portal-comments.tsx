@@ -15,20 +15,18 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { formatClockTime, formatDayLabel } from "@/lib/relative-time";
-import { portalApi } from "@/lib/api/portal-client";
 import { ApiError } from "@/lib/api/client";
-import type { PostComment } from "@/lib/api/types";
-
-/** Build the query key for a post's thread — shared with the page's socket refetch. */
-export function threadKey(token: string, postId: string) {
-  return ["portal", token, postId, "comments"] as const;
-}
+import type { PortalComment, PostReviewApi } from "@/lib/api/post-review";
 
 /** Lightweight count hook so feed items can badge a thread without rendering it. */
-export function useThreadCount(token: string, postId: string, enabled: boolean) {
+export function useThreadCount(
+  api: PostReviewApi,
+  postId: string,
+  enabled: boolean,
+) {
   const { data } = useQuery({
-    queryKey: threadKey(token, postId),
-    queryFn: () => portalApi.comments(token, postId),
+    queryKey: api.queryKey(postId),
+    queryFn: () => api.listComments(postId),
     enabled,
   });
   return data?.length ?? 0;
@@ -43,9 +41,8 @@ export function useThreadCount(token: string, postId: string, enabled: boolean) 
 export function PortalComments({
   open,
   onOpenChange,
-  token,
+  api,
   postId,
-  actorLabel,
   agencyName,
   brand,
   canComment,
@@ -53,19 +50,18 @@ export function PortalComments({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  token: string;
+  api: PostReviewApi;
   postId: string;
-  actorLabel: string;
   agencyName: string;
   brand: string;
   canComment: boolean;
   captionPreview?: string | null;
 }) {
   const qc = useQueryClient();
-  const key = threadKey(token, postId);
+  const key = api.queryKey(postId);
   const { data: comments, isLoading } = useQuery({
     queryKey: key,
-    queryFn: () => portalApi.comments(token, postId),
+    queryFn: () => api.listComments(postId),
     enabled: open,
   });
 
@@ -85,7 +81,7 @@ export function PortalComments({
     if (!body || sending) return;
     setSending(true);
     try {
-      await portalApi.comment(token, postId, body, actorLabel);
+      await api.addComment(postId, body);
       setText("");
       await qc.invalidateQueries({ queryKey: key });
       toast.success("Comment sent to the team");
@@ -176,7 +172,7 @@ export function PortalComments({
             </div>
             <p className="mt-1.5 flex items-center gap-1 px-0.5 text-[11px] text-muted-foreground">
               <ShieldCheck className="size-3 text-success" />
-              Sending as {actorLabel}
+              Your name is added automatically
             </p>
           </div>
         ) : (
@@ -195,7 +191,7 @@ function Thread({
   agencyName,
   brand,
 }: {
-  comments: PostComment[];
+  comments: PortalComment[];
   agencyName: string;
   brand: string;
 }) {
@@ -204,7 +200,7 @@ function Thread({
     <ul className="space-y-3">
       {comments.map((c) => {
         const mine = c.authorType === "client";
-        const name = mine ? c.authorName || "You" : agencyName;
+        const name = mine ? c.author || "You" : agencyName;
         const day = formatDayLabel(c.createdAt);
         const showDay = day !== lastDay;
         lastDay = day;

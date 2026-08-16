@@ -60,6 +60,31 @@ export interface PunchInput {
   lng?: number;
   /** Human-readable area, reverse-geocoded from the coords (best-effort). */
   location?: string;
+  /** Optional note attached to an out-of-office checkout request. */
+  reason?: string;
+}
+
+/**
+ * Checkout held for approval: returned (HTTP 202) when geo is enforced and the
+ * punch lands OUTSIDE the office fence. The day stays checked-in until an
+ * approver settles the request.
+ */
+export interface CheckoutPending {
+  pending: true;
+  /** Metres the punch was from the office centre. */
+  distanceM: number;
+  requestId?: string;
+  /** True when a pending request for today already existed (idempotent). */
+  alreadyRequested?: boolean;
+  record: AttendanceRecord;
+}
+
+/** A finalized checkout returns the record; an out-of-fence one is held. */
+export type CheckOutResult = AttendanceRecord | CheckoutPending;
+
+/** Type guard: the checkout was held for approval rather than finalized. */
+export function isCheckoutPending(r: CheckOutResult): r is CheckoutPending {
+  return (r as CheckoutPending).pending === true;
 }
 
 function useInvalidateAttendance() {
@@ -80,12 +105,16 @@ export function useCheckIn() {
   });
 }
 
-/** POST /attendance/check-out. */
+/**
+ * POST /attendance/check-out. Resolves to the finalized record, OR — when the
+ * punch is outside the office geofence — a {@link CheckoutPending} payload held
+ * for approval (use {@link isCheckoutPending} to discriminate).
+ */
 export function useCheckOut() {
   const invalidate = useInvalidateAttendance();
   return useMutation({
     mutationFn: (input: PunchInput = {}) =>
-      api<AttendanceRecord>("/attendance/check-out", {
+      api<CheckOutResult>("/attendance/check-out", {
         method: "POST",
         body: input,
       }),
